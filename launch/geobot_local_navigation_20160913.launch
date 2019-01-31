@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<launch>
+
+<!--
+  <node pkg="package_name" type="node_name" name="override_name">
+    
+  </node>
+
+<include file="$(find package_name)/directory/another.launch"/>
+-->
+
+<node pkg="geobot_navigation" type="geobot_local_planner_node" name="geobot_local_planner" output="screen">
+	<param name="maximum_linear_velocity" value="0.5"/>
+	<param name="maximum_angular_velocity" value="1.0"/>
+	<param name="error_tolerance2goal" value="0.4"/>
+	<param name="no_of_segments_ahead" value="5"/>
+	<param name="error_gain" value="1.0"/>
+	<param name="cte_gain" value="1.0"/>
+	<param name="heading_gain" value="1.0"/>
+	<param name="velocity_constraint" value="1.0"/>
+	  
+  </node>
+
+
+</launch>

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+
+<launch>
+
+
+<include file="$(find robust_navigation)/launch/local_navigation_avoidance.launch">
+        <arg name="maximum_linear_velocity" default="0.01" />
+    </include>
+
+
+
+    <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure">
+
+        
+    </node>
+
+
+
+</launch>

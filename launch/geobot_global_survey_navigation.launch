@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<launch>
+
+<!--
+  <node pkg="package_name" type="node_name" name="override_name">
+    
+  </node>
+
+  <include file="$(find package_name)/directory/another.launch"/>
+
+  Combine the launch file of geobot_gui and geobot_global_planner_survey together for the reason of referencing the same file location
+  when an edit is done.
+-->
+
+<node pkg="geobot_navigation" type="geobot_global_planner_survey_node" name="geobot_global_planner_survey_node" output="screen">
+	<param name="vehicle_length" value="1.3"/>
+	<param name="vehicle_width" value="1.0"/>   <!-- To change the density of your path -->
+	<param name="vehicle_height" value="0.5"/>
+	<param name="path_step_distance" value="0.5"/>
+	<param name="path_frame_id" value="odom"/>
+	<param name="corner_file_path" value = "/home/blaster-ws/ros_ws/src/geobot_navigation/corners.txt" />
+	<param name="obstacle_file_path" value = "/home/blaster-ws/ros_ws/src/geobot_navigation/obstacles.txt" />
+	<param name="path_file_path" value = "/home/blaster-ws/Desktop/path.txt"/>
+	<param name="print_to_file" value = "No"/>
+	<param name="show_entered_corners" value = "Yes"/>
+	<param name="show_entered_obstacles" value = "Yes"/>
+	<param name="start_corner_number" value = "2"/>  <!-- To change orientation of your path -->
+	<param name="show_corner_order" value = "Yes"/>
+	<param name="show_path" value = "Yes"/>
+	<param name="failure_tolerance" value = "No"/>
+	<param name="zero_tolerance" value = "0.001"/>
+  
+  </node>
+
+
+
+</launch>

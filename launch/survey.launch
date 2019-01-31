@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<launch>
+
+<!--
+  <node pkg="package_name" type="node_name" name="override_name">
+    
+  </node>
+
+  Combine the launch file of geobot_gui and geobot_global_planner_survey together for the reason of referencing the same file location
+  when an edit is done.
+
+  -->
+
+  <include file="$(find geobot_navigation)/launch/geobot_global_survey_navigation.launch"/>
+  <include file="$(find husky_viz)/launch/view_robot.launch"/>
+  
+  <node pkg="geobot_gui" type="geobot_gui_node" name="geobot_gui">
+    
+  </node>
+
+  
+
+</launch>
