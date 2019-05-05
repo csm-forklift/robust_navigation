@@ -144,6 +144,7 @@ add_executable(planner_node src/Planner.cpp)
 add_executable(path_controller_node src/Velocity_Controller.cpp)
 add_executable(smoother_node src/smoother.cpp)
 add_dependencies(path_controller_node ${PROJECT_NAME}_gencfg)
+add_executable(velocity_controller_reverse src/Velocity_Controller_Reverse.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(robust_navigation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -162,6 +163,8 @@ target_link_libraries(path_controller_node
    ${catkin_LIBRARIES}
 )
 add_dependencies(path_controller_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(velocity_controller_reverse ${catkin_LIBRARIES})
+
 #############
 ## Install ##
 #############
