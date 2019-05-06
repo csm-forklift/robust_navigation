@@ -71,14 +71,14 @@ private:
 	dynamic_reconfigure::Server<robust_navigation::GainsConfig>::CallbackType f;
 
 public:
-	VelocityController() : nh_("~"), f(boost::bind(&VelocityController::parameter_callback, this, _1, _2)){
+	VelocityController() : nh_("~"), f(boost::bind(&VelocityController::parameter_callback, this, _1, _2)) {
 		server.setCallback(f);
 		get_params();
 		//cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base/commands/velocity",20); / use with actual turtlebot
         cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop",20); // use with gazebo turtlebot
 		local_path_pub = nh_.advertise<nav_msgs::Path>("/local_path",20);
-		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
-        controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
+		update_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::update_path,this);
+        controller_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::controller_loop,this);
         lin_vel_pub = nh_.advertise<std_msgs::Float32>("/controls/velocity_setpoint", 1);
         steer_angle_pub = nh_.advertise<std_msgs::Float32>("/controls/angle_setpoint", 1);
 
@@ -108,8 +108,19 @@ public:
         // cout << "2) Running path_tracking_controller" << endl;
         // cout << "*****************************************************" << endl;
 
+        // DEBUG:
+        cout << "Begin control loop\n";
+
 		int lookahead_segments, remaining_segments;
 		ros::Time previous_time = ros::Time::now();
+
+        // DEBUG:
+        cout << "lookahead: " << lookahead_segments << "\n";
+        cout << "remaining: " << remaining_segments << "\n";
+        cout << "Time: " << previous_time << "\n";
+        cout << "local size: " << local_path.size() << "\n";
+        cout << "segment: " << segment << "\n";
+
 		while(segment < local_path.size()-1){
 
 			along_track_error = compute_along_track_error();
@@ -121,15 +132,20 @@ public:
 			}
 			while(along_track_error > goal_tol){
 
-                // cout << "*****************************************************" << endl;
-                // std::cout << "3) Entered velocity command loop" << std::endl;
-                // cout << "*****************************************************" << endl;
+                // DEBUG:
+                cout << "*****************************************************" << endl;
+                std::cout << "3) Entered velocity command loop" << std::endl;
+                cout << "*****************************************************" << endl;
 
 				nh_.param("/control_panel_node/control_estop", control_estop,false);
 				while(joystick_override || control_estop || proximity_stop){
 					nh_.param("/control_panel_node/control_estop", control_estop,false);
 					nh_.param("/proximity_check", proximity_stop,false);
 				}
+
+                // DEBUG:
+                cout << "Obtaining robot pose\n";
+
 				aquire_robotpose();
 
 				start_point.x = local_path[segment][0] ;
@@ -142,6 +158,10 @@ public:
 				double bendahead = path_curvature(pose.heading, lookahead_segments);
 				double velocity_constraint = (1 - pow((bendahead/(3.14*0.6)),1.5));
 				velocity_constraint = max(velocity_constraint,0.3);
+
+                //==============================================================
+                // Set Velocity Input
+                //==============================================================
 				linear_velocity = velocity_constraint*maximum_linear_velocity;
 
 				// Slowing down if approaching last goal
@@ -173,6 +193,10 @@ public:
 					previous_heading_error = heading_error;
 
 				}
+
+                //==============================================================
+                // Set Steering Input
+                //==============================================================
 				steering_angle = heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error;  //check this
 				angular_velocity = steering_gain * steering_angle;
 				if (angular_velocity > maximum_angular_velocity){angular_velocity = maximum_angular_velocity;}
@@ -195,10 +219,12 @@ public:
 				cmd_vel_pub.publish(velocity_command);
 
                 // Publish the raw Linear Velocity and Steering Angle
+                // NOTE: because the forklift is going in the reverse direction,
+                // the velocity and steering angle must be made negative.
                 std_msgs::Float32 velocity_msg;
                 std_msgs::Float32 steer_msg;
-                velocity_msg.data = linear_velocity;
-                steer_msg.data = steering_angle;
+                velocity_msg.data = -linear_velocity;
+                steer_msg.data = -steering_angle;
                 lin_vel_pub.publish(velocity_msg);
                 steer_angle_pub.publish(steer_msg);
 
@@ -250,15 +276,19 @@ public:
 
 	void update_path(nav_msgs::Path path){
 
-        // // FIXME: MAKE SURE THE PATH UPDATES WHEN IT SHOULD
-        // cout << "*********************************************\n\n";
-        // cout << "*** UPDATING PATH ***\n\n";
-        // cout << "*********************************************" << endl;
+        // DEBUG: check if this function is running
+        cout << "*********************************************\n\n";
+        cout << "*** UPDATING PATH ***\n\n";
+        cout << "*********************************************" << endl;
 
 		//pathIsAvailable = true;
 		segment = 0;
 		vector <double>  new_point;
 		vector <vector <double> >  update_path;
+
+        cout << "pre-'for' loop\n";
+        cout << "path size: " << path.poses.size() << "\n";
+
 		for (int i = 0; i < path.poses.size(); i++){
 			new_point.push_back(path.poses[i].pose.position.x);
 	        new_point.push_back(path.poses[i].pose.position.y);
@@ -267,6 +297,10 @@ public:
 		}
 		local_path = update_path;
 		update_path.clear();
+
+        // DEBUG: check if local path was updated correctly
+        cout << "Local path size: " << local_path.size() << "\n";
+
 		// if(path_tracking_controller()){
 		// 	ROS_INFO("DONE!");
 		// }
@@ -320,7 +354,7 @@ public:
 	}
 	void get_params(){
 		//nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
-        nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.15);
+        nh_.param("maximum_linear_velocity", maximum_linear_velocity, 2.0);
 		nh_.param("maximum_angular_velocity",maximum_angular_velocity, 1.92);
 		nh_.param("Num_of_segments_ahead", Num_of_segments_ahead, 1);
 		nh_.param("goal_tolerance", goal_tol, 0.3);
@@ -355,8 +389,8 @@ public:
 
 int main(int argc, char **argv){
 
-	ROS_INFO("initializing path_controller_node");
-	ros::init(argc, argv, "path_controller_node");
+	ROS_INFO("initializing velocity_controller_reverse");
+	ros::init(argc, argv, "velocity_controller_reverse");
 
 	VelocityController VC;
 
