@@ -6,6 +6,7 @@
 #include <math.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath> // for M_PI
 #include <tf/tf.h>
 #include <tf/transform_listener.h>
 #include <sensor_msgs/Joy.h>
@@ -14,7 +15,7 @@
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
-#include <std_msgs/Float32.h>
+#include <std_msgs/Float64.h>
 
 #include <dynamic_reconfigure/server.h>
 #include <robust_navigation/GainsConfig.h>
@@ -25,39 +26,41 @@ using namespace std;
 class VelocityController{
 
 private:
+    // ROS Objects
 	ros::NodeHandle nh_;
 	ros::Subscriber update_path_sub; // subscribes to path from A*
-
     // FIXME: This subscriber runs the path controller whenever it receives a path while the one above simply updates the path. There should be a better way to do this.
     ros::Subscriber controller_path_sub;
-
 	ros::Subscriber joystickoverideSubscriber_; // subscribes to deadman switch on joystick
-
 	ros::Publisher cmd_vel_pub; // cmd vel to send to vehicle
 	ros::Publisher local_path_pub; // publishing the current segment we are looking at
     // Publishers for Linear Velocity and Steering Angle
     ros::Publisher lin_vel_pub;
     ros::Publisher steer_angle_pub;
-
 	ros::Duration delta_time;
-	bool joystick_override, control_estop, proximity_stop; // deadman switch
-	geometry_msgs::Point start_point,end_point; // local segment points
-	double maximum_angular_velocity, maximum_linear_velocity;
+    tf::TransformListener listener;
 
+    // Bounds
+    geometry_msgs::Point start_point,end_point; // local segment points
+    double maximum_angular_velocity, maximum_linear_velocity;
+    double max_linear_vel, max_angular_vel; // robot constraints
+
+    // State variables
+    double steering_angle;
 	double angular_velocity, linear_velocity;
-	double max_linear_vel, max_angular_vel; // robot constraints
-	double goal_tol; // robot tolerance constraint
+	bool joystick_override, control_estop, proximity_stop; // deadman switch
 	double goal_heading;
-	int Num_of_segments_ahead,sequence; // changes depends on path
-	double steering_gain,cte_gain,error_gain,heading_gain,derivative_cte_gain,derivative_heading_gain; // gains for the controller
-	double steering_angle;
-	double cross_track_error_deadband; //stops path oscillation
+    bool path_has_been_updated;
 
-	double cross_track_error,delta_cross_track_error,derivative_cross_track_error,heading_error,delta_heading_error,derivative_heading_error;
+    // Controller Parameters
+    double steering_gain,cte_gain,error_gain,heading_gain,derivative_cte_gain,derivative_heading_gain; // gains for the controller
+    double cross_track_error,delta_cross_track_error,derivative_cross_track_error,heading_error,delta_heading_error,derivative_heading_error;
 	double along_track_error;
 	double previous_heading_error,previous_cross_track_error;
-	double min_delta_time;
-	tf::TransformListener listener;
+    double cross_track_error_deadband; //stops path oscillation
+    double goal_tol; // robot tolerance constraint
+    double min_delta_time;
+    int Num_of_segments_ahead,sequence; // changes depends on path
 
 	vector< vector<double> > local_path;
 	int segment;
@@ -71,24 +74,24 @@ private:
 	dynamic_reconfigure::Server<robust_navigation::GainsConfig>::CallbackType f;
 
 public:
-	VelocityController() : nh_("~"), f(boost::bind(&VelocityController::parameter_callback, this, _1, _2)) {
+	VelocityController() : nh_("~"), f(boost::bind(&VelocityController::parameter_callback, this, _1, _2))
+    {
 		server.setCallback(f);
 		get_params();
 		//cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base/commands/velocity",20); / use with actual turtlebot
         cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop",20); // use with gazebo turtlebot
 		local_path_pub = nh_.advertise<nav_msgs::Path>("/local_path",20);
+        // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
 		update_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::update_path,this);
         controller_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::controller_loop,this);
-        lin_vel_pub = nh_.advertise<std_msgs::Float32>("/controls/velocity_setpoint", 1);
-        steer_angle_pub = nh_.advertise<std_msgs::Float32>("/controls/angle_setpoint", 1);
-
-        // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
-
+        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
+        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
 		joystick_override = false;
 		control_estop = false;
 		proximity_stop = false;
+        path_has_been_updated = false;
 
         // cout << "*****************************************************" << endl;
         // cout << "1) Velocity controller constructor" << endl;
@@ -97,54 +100,58 @@ public:
 
     void controller_loop(nav_msgs::Path path)
     {
-        if(path_tracking_controller()) {
-            ROS_INFO("DONE!");
+        if (path_has_been_updated) {
+            if(path_tracking_controller()) {
+                ROS_INFO("DONE!");
+            }
         }
     }
 
-	bool path_tracking_controller(){
-
-        // cout << "*****************************************************" << endl;
-        // cout << "2) Running path_tracking_controller" << endl;
-        // cout << "*****************************************************" << endl;
-
-        // DEBUG:
-        cout << "Begin control loop\n";
+	bool path_tracking_controller()
+    {
+        // // DEBUG: check we are in here
+        // cout << "*****************************************************\n";
+        // cout << "2) Running path_tracking_controller\n";
+        // cout << "*****************************************************\n";
 
 		int lookahead_segments, remaining_segments;
 		ros::Time previous_time = ros::Time::now();
 
-        // DEBUG:
-        cout << "lookahead: " << lookahead_segments << "\n";
-        cout << "remaining: " << remaining_segments << "\n";
-        cout << "Time: " << previous_time << "\n";
-        cout << "local size: " << local_path.size() << "\n";
-        cout << "segment: " << segment << "\n";
+        // // DEBUG:
+        // cout << "lookahead: " << lookahead_segments << "\n";
+        // cout << "remaining: " << remaining_segments << "\n";
+        // cout << "Time: " << previous_time << "\n";
+        // cout << "local size: " << local_path.size() << "\n";
+        // cout << "segment: " << segment << "\n";
 
-		while(segment < local_path.size()-1){
+		while(segment < local_path.size()-1) {
+
+            // // DEBUG: show progress
+            // cout << "Segment: " << segment << " of " << local_path.size()-1 << "\n";
 
 			along_track_error = compute_along_track_error();
-			if(along_track_error > goal_tol){
+			if(along_track_error > goal_tol) {
 				ros::param::set("/goal_bool",false);
 			}
-			else{
+			else {
 				ros::param::set("/goal_bool",true);
 			}
-			while(along_track_error > goal_tol){
 
-                // DEBUG:
-                cout << "*****************************************************" << endl;
-                std::cout << "3) Entered velocity command loop" << std::endl;
-                cout << "*****************************************************" << endl;
+            // DEBUG: check this loop
+            cout << "along_track: " << along_track_error << "\n";
+
+			while(along_track_error > goal_tol) {
+
+                // // DEBUG:
+                // cout << "*****************************************************" << endl;
+                // std::cout << "3) Entered velocity command loop" << std::endl;
+                // cout << "*****************************************************" << endl;
 
 				nh_.param("/control_panel_node/control_estop", control_estop,false);
-				while(joystick_override || control_estop || proximity_stop){
+				while(joystick_override || control_estop || proximity_stop) {
 					nh_.param("/control_panel_node/control_estop", control_estop,false);
 					nh_.param("/proximity_check", proximity_stop,false);
 				}
-
-                // DEBUG:
-                cout << "Obtaining robot pose\n";
 
 				aquire_robotpose();
 
@@ -165,7 +172,7 @@ public:
 				linear_velocity = velocity_constraint*maximum_linear_velocity;
 
 				// Slowing down if approaching last goal
-				if (segment == local_path.size()-1){
+				if (segment == local_path.size()-1) {
 					double segment_length = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1]- local_path[segment][1]),2));
 					double approaching_velocity = (abs(along_track_error)/segment_length)*linear_velocity;
 					linear_velocity = min(linear_velocity, approaching_velocity);
@@ -174,15 +181,15 @@ public:
 				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
 				heading_error = goal_heading - pose.heading;
 				// computing smallest angle
-				if (heading_error > M_PI){heading_error = heading_error-(M_PI*2);}
-				if (heading_error < -M_PI){heading_error=heading_error+(M_PI*2);}
+				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
+				if (heading_error < -M_PI) {heading_error=heading_error+(M_PI*2);}
 
 				cross_track_error = compute_cross_track_error(pose.x, pose.y, start_point.x, start_point.y, end_point.x, end_point.y);
 				 // This is to avoid oscillation of the robot around the path
-				if(abs(cross_track_error) <= cross_track_error_deadband){cross_track_error = 0.0;}
+				if(abs(cross_track_error) <= cross_track_error_deadband) {cross_track_error = 0.0;}
 
 				delta_time = ros::Time::now() - previous_time;
-				if(delta_time > ros::Duration(min_delta_time)){
+				if(delta_time > ros::Duration(min_delta_time)) {
 					previous_time = ros::Time::now();
 					delta_cross_track_error = cross_track_error - previous_cross_track_error;
 					derivative_cross_track_error = derivative_cte_gain * delta_cross_track_error/delta_time.toSec();
@@ -199,15 +206,14 @@ public:
                 //==============================================================
 				steering_angle = heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error;  //check this
 				angular_velocity = steering_gain * steering_angle;
-				if (angular_velocity > maximum_angular_velocity){angular_velocity = maximum_angular_velocity;}
-				if (angular_velocity < -maximum_angular_velocity){angular_velocity = -maximum_angular_velocity;}
+				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
+				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
 
 
 				// we need to send steering angle and velocity to the forklift.
 				// we also need to make this controller go backwards.
 				//true_vel = sqrt(pow(linear_velocity,2)+pow(angular_velocity,2));
 				//steering_angle = angular_velocity/steering_gain;
-
 
 				geometry_msgs::Twist velocity_command;
 				velocity_command.linear.x = linear_velocity;
@@ -221,8 +227,8 @@ public:
                 // Publish the raw Linear Velocity and Steering Angle
                 // NOTE: because the forklift is going in the reverse direction,
                 // the velocity and steering angle must be made negative.
-                std_msgs::Float32 velocity_msg;
-                std_msgs::Float32 steer_msg;
+                std_msgs::Float64 velocity_msg;
+                std_msgs::Float64 steer_msg;
                 velocity_msg.data = -linear_velocity;
                 steer_msg.data = -steering_angle;
                 lin_vel_pub.publish(velocity_msg);
@@ -230,7 +236,7 @@ public:
 
 				vector<geometry_msgs::PoseStamped> plan;
 				ros::Time time_now = ros::Time::now();
-		        for (int i = segment; i < segment + lookahead_segments; i++){
+		        for (int i = segment; i < segment + lookahead_segments; i++) {
 					geometry_msgs::PoseStamped local_plan;
 			        tf::Quaternion quat = tf::createQuaternionFromYaw(0);
 	 	            local_plan.header.seq = i;
@@ -260,7 +266,8 @@ public:
 		return true;
 	}
 
-	double path_curvature(double present_heading, int lookahead_segments){
+	double path_curvature(double present_heading, int lookahead_segments)
+    {
 	// compute the path curvature and add to the heading error between the robot heading and the path
 		double lookahead_heading_deviation = 0.0;
 		double init_angle = present_heading;
@@ -274,20 +281,18 @@ public:
 		return lookahead_heading_deviation;
 	}
 
-	void update_path(nav_msgs::Path path){
+	void update_path(nav_msgs::Path path)
+    {
 
-        // DEBUG: check if this function is running
-        cout << "*********************************************\n\n";
-        cout << "*** UPDATING PATH ***\n\n";
-        cout << "*********************************************" << endl;
+        // // DEBUG: check if this function is running
+        // cout << "*********************************************\n";
+        // cout << "*** UPDATING PATH ***\n";
+        // cout << "*********************************************" << endl;
 
 		//pathIsAvailable = true;
 		segment = 0;
 		vector <double>  new_point;
 		vector <vector <double> >  update_path;
-
-        cout << "pre-'for' loop\n";
-        cout << "path size: " << path.poses.size() << "\n";
 
 		for (int i = 0; i < path.poses.size(); i++){
 			new_point.push_back(path.poses[i].pose.position.x);
@@ -298,14 +303,18 @@ public:
 		local_path = update_path;
 		update_path.clear();
 
-        // DEBUG: check if local path was updated correctly
-        cout << "Local path size: " << local_path.size() << "\n";
-
 		// if(path_tracking_controller()){
 		// 	ROS_INFO("DONE!");
 		// }
+
+        // Once this is set to 'true', the control loop is able to run Starting
+        // as 'false' gets this loop to run at least once before running the
+        // control loop.
+        path_has_been_updated = true;
 	}
-	double compute_cross_track_error(double x0, double y0, double x1, double y1, double x2, double y2){
+
+	double compute_cross_track_error(double x0, double y0, double x1, double y1, double x2, double y2)
+    {
 		double Dx, Dy, numerator, denominator, xte;
 		Dx = x2 - x1;
 		Dy = y2 - y1;
@@ -314,7 +323,9 @@ public:
 		xte = numerator/denominator;
 		return xte;
 	}
-	double compute_along_track_error(){
+
+	double compute_along_track_error()
+    {
 		double L1, L2, L3;
 	 	double theta, along_track_error;
 		 L1 = sqrt(pow((pose.x - local_path[segment+1][0]),2) + pow((pose.y - local_path[segment+1][1]),2));
@@ -324,7 +335,9 @@ public:
 		 along_track_error = L1*cos(theta);
 		 return along_track_error;
 	}
-	bool aquire_robotpose(){
+
+	bool aquire_robotpose()
+    {
 		tf::StampedTransform odom_base_transform;
 		tf::Matrix3x3 mat;
 		double roll,pitch,yaw;
@@ -335,14 +348,18 @@ public:
 			ROS_ERROR("%s",ex.what());
 			return false;
 		}
+
+        // The orientation Yaw needs to be flipped by PI radians because the forklift is driving backwards.
 		mat.setRotation(odom_base_transform.getRotation());
 		mat.getRPY(roll, pitch, yaw);
 		pose.x = odom_base_transform.getOrigin().getX();
 		pose.y = odom_base_transform.getOrigin().getY();
-		pose.heading = yaw;
+		pose.heading = wrapToPi(yaw + M_PI);
 		return true;
 	}
-	double smallest_diff_angle(double theta2, double theta1){
+
+	double smallest_diff_angle(double theta2, double theta1)
+    {
 		// create a quaternion for each angle
 		// then multiply them with the other which is addition in quaternion
 		// convert the result back to angle
@@ -352,7 +369,9 @@ public:
 		quat2.setRPY(0.0, 0.0, theta2);
 		return result=quat2.angleShortestPath(quat1);
 	}
-	void get_params(){
+
+	void get_params()
+    {
 		//nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 2.0);
 		nh_.param("maximum_angular_velocity",maximum_angular_velocity, 1.92);
@@ -367,7 +386,9 @@ public:
 		nh_.param("cross_track_error_deadband",cross_track_error_deadband, 0.3);
 		nh_.param("min_delta_time",min_delta_time,0.1);
 	}
-	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level){
+
+	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
+    {
 		maximum_linear_velocity =config.maximum_linear_velocity;
 		maximum_angular_velocity = config.maximum_angular_velocity;
 		goal_tol =config.goal_tol;
@@ -381,10 +402,21 @@ public:
 		derivative_heading_gain = config.derivative_heading_gain;
 		min_delta_time =config.min_delta_time;
 	}
-	void joy_override(const sensor_msgs::Joy joy_msg){
+
+	void joy_override(const sensor_msgs::Joy joy_msg)
+    {
 		if(joy_msg.buttons[4] == 1){joystick_override = true;}
 		else{joystick_override = false;}
 	}
+
+    double wrapToPi(double angle)
+    {
+        angle = fmod(angle + M_PI, 2*M_PI);
+        if (angle < 0) {
+            angle += 2*M_PI;
+        }
+        return (angle - M_PI);
+    }
 };
 
 int main(int argc, char **argv){
