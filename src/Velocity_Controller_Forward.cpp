@@ -164,6 +164,7 @@ public:
 				lookahead_segments = min(Num_of_segments_ahead, remaining_segments);
 				double bendahead = path_curvature(pose.heading, lookahead_segments);
 				double velocity_constraint = (1 - pow((bendahead/(3.14*0.6)),1.5));
+
 				velocity_constraint = max(velocity_constraint,0.3);
 
                 //==============================================================
@@ -204,7 +205,7 @@ public:
                 // Set Steering Input
                 //==============================================================
                 // NOTE: because the forklift is rear-steering when going in the forward direction, a negative steering angle results in a left-hand turn which is a positive angular velocity. This controller was designed for a front-steering system, so the steering angle must be negated.
-                steering_angle = -heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error;  //check this
+                steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);  //check this
                 // The steering angle must be negated to give the appropriate angular velocity since the system is rear-steering when going forward.
 				angular_velocity = steering_gain * -steering_angle;
 				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
@@ -267,7 +268,7 @@ public:
 
 	double path_curvature(double present_heading, int lookahead_segments)
     {
-	// compute the path curvature and add to the heading error between the robot heading and the path
+	    // compute the path curvature and add to the heading error between the robot heading and the path
 		double lookahead_heading_deviation = 0.0;
 		double init_angle = present_heading;
 		double angle, diff_angle;
@@ -353,7 +354,7 @@ public:
 		mat.getRPY(roll, pitch, yaw);
 		pose.x = odom_base_transform.getOrigin().getX();
 		pose.y = odom_base_transform.getOrigin().getY();
-		pose.heading = wrapToPi(yaw + M_PI);
+		pose.heading = wrapToPi(yaw);
 		return true;
 	}
 
@@ -371,8 +372,11 @@ public:
 
 	void get_params()
     {
-		//nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
-        nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
+        // Manually Set Parameters
+        nh_.setParam("maximum_linear_velocity", 0.5);
+
+        // Read in Parameters from Config file
+        nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.5);
 		nh_.param("maximum_angular_velocity",maximum_angular_velocity, 1.92);
 		nh_.param("Num_of_segments_ahead", Num_of_segments_ahead, 1);
 		nh_.param("goal_tolerance", goal_tol, 0.3);
@@ -405,8 +409,8 @@ public:
 	void joy_override(const sensor_msgs::Joy joy_msg)
     {
         // FIXME: NEED TO HANDLE OVERRIDE CONSISTENTLY
-        //if(joy_msg.buttons[4] == 1){joystick_override = true;}
-		//else{joystick_override = false;}
+        if(joy_msg.buttons[4] == 1){joystick_override = true;}
+		else{joystick_override = false;}
 	}
 
     double wrapToPi(double angle)
