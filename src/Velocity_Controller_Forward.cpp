@@ -137,9 +137,6 @@ public:
 				ros::param::set("/goal_bool",true);
 			}
 
-            // DEBUG: check this loop
-            cout << "along_track: " << along_track_error << "\n";
-
 			while(along_track_error > goal_tol) {
 
                 // // DEBUG:
@@ -205,6 +202,15 @@ public:
                 // Set Steering Input
                 //==============================================================
                 // NOTE: because the forklift is rear-steering when going in the forward direction, a negative steering angle results in a left-hand turn which is a positive angular velocity. This controller was designed for a front-steering system, so the steering angle must be negated.
+
+                // DEBUG: Check controller terms
+                cout << "Prev heading error: " << previous_heading_error << "\n";
+                cout << "Curr heading error: " << heading_error << "\n";
+                cout << "Heading: " << heading_gain*heading_error << "\n";
+                cout << "Cross-track: " << error_gain*atan2(cte_gain*cross_track_error,linear_velocity) << "\n";
+                cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
+                cout << "Heading derivative: " << derivative_heading_error << "\n";
+
                 steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);  //check this
                 // The steering angle must be negated to give the appropriate angular velocity since the system is rear-steering when going forward.
 				angular_velocity = steering_gain * -steering_angle;
@@ -374,6 +380,8 @@ public:
     {
         // Manually Set Parameters
         nh_.setParam("maximum_linear_velocity", 0.5);
+        nh_.setParam("derivative_cte_gain", 0.1);
+        nh_.setParam("derivative_heading_gain", 0.01);
 
         // Read in Parameters from Config file
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.5);
