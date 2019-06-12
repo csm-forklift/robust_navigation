@@ -102,6 +102,10 @@ public:
     {
         if (path_has_been_updated) {
             if(path_tracking_controller()) {
+                // Stop linear velocity
+                std_msgs::Float64 velocity_msg;
+                velocity_msg.data = 0.0;
+                lin_vel_pub.publish(velocity_msg);
                 ROS_INFO("DONE!");
             }
         }
@@ -137,7 +141,15 @@ public:
 				ros::param::set("/goal_bool",true);
 			}
 
+            // // DEBUG: print along track error
+            // cout << "Along track error: " << along_track_error << "\n";
+
+            // Main control loop
 			while(along_track_error > goal_tol) {
+
+                // DEBUG: print along track error
+                int num_segments = local_path.size()-1;
+                printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                 // // DEBUG:
                 // cout << "*****************************************************" << endl;
@@ -203,13 +215,13 @@ public:
                 //==============================================================
                 // NOTE: because the forklift is rear-steering when going in the forward direction, a negative steering angle results in a left-hand turn which is a positive angular velocity. This controller was designed for a front-steering system, so the steering angle must be negated.
 
-                // DEBUG: Check controller terms
-                cout << "Prev heading error: " << previous_heading_error << "\n";
-                cout << "Curr heading error: " << heading_error << "\n";
-                cout << "Heading: " << heading_gain*heading_error << "\n";
-                cout << "Cross-track: " << error_gain*atan2(cte_gain*cross_track_error,linear_velocity) << "\n";
-                cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
-                cout << "Heading derivative: " << derivative_heading_error << "\n";
+                // // DEBUG: Check controller terms
+                // cout << "Prev heading error: " << previous_heading_error << "\n";
+                // cout << "Curr heading error: " << heading_error << "\n";
+                // cout << "Heading: " << heading_gain*heading_error << "\n";
+                // cout << "Cross-track: " << error_gain*atan2(cte_gain*cross_track_error,linear_velocity) << "\n";
+                // cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
+                // cout << "Heading derivative: " << derivative_heading_error << "\n";
 
                 steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);  //check this
                 // The steering angle must be negated to give the appropriate angular velocity since the system is rear-steering when going forward.
@@ -309,10 +321,6 @@ public:
 		local_path = update_path;
 		update_path.clear();
 
-		// if(path_tracking_controller()){
-		// 	ROS_INFO("DONE!");
-		// }
-
         // Once this is set to 'true', the control loop is able to run Starting
         // as 'false' gets this loop to run at least once before running the
         // control loop.
@@ -337,8 +345,23 @@ public:
 		 L1 = sqrt(pow((pose.x - local_path[segment+1][0]),2) + pow((pose.y - local_path[segment+1][1]),2));
 		 L2 = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1] - local_path[segment][1]),2));
 		 L3 = sqrt(pow((pose.x - local_path[segment][0]),2) + pow((pose.y - local_path[segment][1]),2));
-		 theta = acos(-(L3*L3 - L1*L1 - L2*L2)/(2*L1*L2));
-		 along_track_error = L1*cos(theta);
+
+         // // DEBUG: check calculations
+         // cout << "Goal tol: " << goal_tol << "\n";
+         // cout << "Pose: (" << pose.x << "," << pose.y << ", " << pose.heading << ")\n";
+         // cout << "Segment " << segment << ": (" << local_path[segment][0] << "," << local_path[segment][1] << ")\n";
+         // cout << "Segment " << segment+1 << ": (" << local_path[segment+1][0] << "," << local_path[segment+1][1] << ")\n";
+         // cout << "L1: " << L1 << "\n";
+         // cout << "L2: " << L2 << "\n";
+         // cout << "L3: " << L3 << "\n";
+
+		 // theta = acos(-(L3*L3 - L1*L1 - L2*L2)/(2*L1*L2));
+         //
+         // cout << "Theta: " << theta << "\n";
+         //
+		 // along_track_error = L1*cos(theta);
+
+         along_track_error = -(L3*L3 - L1*L1 - L2*L2)/(2*L2);
 		 return along_track_error;
 	}
 
@@ -382,6 +405,7 @@ public:
         nh_.setParam("maximum_linear_velocity", 0.5);
         nh_.setParam("derivative_cte_gain", 0.1);
         nh_.setParam("derivative_heading_gain", 0.01);
+        nh_.setParam("goal_tolerance",  0.3);
 
         // Read in Parameters from Config file
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.5);
@@ -402,7 +426,7 @@ public:
     {
 		maximum_linear_velocity =config.maximum_linear_velocity;
 		maximum_angular_velocity = config.maximum_angular_velocity;
-		goal_tol =config.goal_tol;
+		goal_tol = config.goal_tol;
 		Num_of_segments_ahead = config.num_of_segments_ahead;
 		steering_gain = config.steering_gain;
 	    error_gain = config.error_gain;
@@ -416,9 +440,9 @@ public:
 
 	void joy_override(const sensor_msgs::Joy joy_msg)
     {
-        // FIXME: NEED TO HANDLE OVERRIDE CONSISTENTLY
-        if(joy_msg.buttons[4] == 1){joystick_override = true;}
-		else{joystick_override = false;}
+        // // FIXME: NEED TO HANDLE OVERRIDE CONSISTENTLY
+        // if(joy_msg.buttons[4] == 1){joystick_override = true;}
+		// else{joystick_override = false;}
 	}
 
     double wrapToPi(double angle)
