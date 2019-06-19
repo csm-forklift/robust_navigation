@@ -7,6 +7,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath> // for M_PI
+#include <sys/time.h>
 #include <tf/tf.h>
 #include <tf/transform_listener.h>
 #include <sensor_msgs/Joy.h>
@@ -48,7 +49,8 @@ private:
     // State variables
     double steering_angle;
 	double angular_velocity, linear_velocity;
-	bool joystick_override, control_estop, proximity_stop; // deadman switch
+    int autonomous_deadman_button, manual_deadman_button;
+	bool autonomous_deadman_on, manual_deadman_on, control_estop, proximity_stop; // deadman switch
 	double goal_heading;
     bool path_has_been_updated;
 
@@ -88,7 +90,8 @@ public:
         steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
-		joystick_override = false;
+        autonomous_deadman_on = false;
+		manual_deadman_on = false;
 		control_estop = false;
 		proximity_stop = false;
         path_has_been_updated = false;
@@ -157,7 +160,7 @@ public:
                 // cout << "*****************************************************" << endl;
 
 				nh_.param("/control_panel_node/control_estop", control_estop,false);
-				while(joystick_override || control_estop || proximity_stop) {
+				while(manual_deadman_on || control_estop || proximity_stop) {
 					nh_.param("/control_panel_node/control_estop", control_estop,false);
 					nh_.param("/proximity_check", proximity_stop,false);
 				}
@@ -418,8 +421,11 @@ public:
 		nh_.param("heading_gain", heading_gain, 1.0);
 		nh_.param("derivative_cte_gain",derivative_cte_gain, 1.0);
 		nh_.param("derivative_heading_gain", derivative_heading_gain, 1.0);
-		nh_.param("cross_track_error_deadband",cross_track_error_deadband, 0.3);
-		nh_.param("min_delta_time",min_delta_time,0.1);
+		nh_.param("cross_track_error_deadband", cross_track_error_deadband,  0.3);
+		nh_.param("min_delta_time", min_delta_time, 0.1);
+
+        nh_.param("manual_deadman", manual_deadman_button, 4);
+        nh_.param("autonomous_deadman", autonomous_deadman_button, 5);
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
@@ -440,9 +446,19 @@ public:
 
 	void joy_override(const sensor_msgs::Joy joy_msg)
     {
-        // // FIXME: NEED TO HANDLE OVERRIDE CONSISTENTLY
-        // if(joy_msg.buttons[4] == 1){joystick_override = true;}
-		// else{joystick_override = false;}
+        if (joy_msg.buttons[manual_deadman_button] == 1) {
+            manual_deadman_on = true;
+        }
+		else {
+            manual_deadman_on = false;
+        }
+
+        if (joy_msg.buttons[autonomous_deadman_button] == 1) {
+            autonomous_deadman_on = true;
+        }
+		else {
+            autonomous_deadman_on = false;
+        }
 	}
 
     double wrapToPi(double angle)
@@ -453,12 +469,20 @@ public:
         }
         return (angle - M_PI);
     }
+
+    double getWallTime() {
+        struct timeval time;
+        if (gettimeofday(&time, NULL)) {
+            return 0;
+        }
+        return (double)time.tv_sec + (double)time.tv_usec*0.000001;
+    }
 };
 
 int main(int argc, char **argv){
 
-	ROS_INFO("initializing velocity_controller_reverse");
-	ros::init(argc, argv, "velocity_controller_reverse");
+	ROS_INFO("initializing velocity_controller_forward");
+	ros::init(argc, argv, "velocity_controller_forward");
 
 	VelocityController VC;
 
