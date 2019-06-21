@@ -51,6 +51,7 @@ private:
 	double angular_velocity, linear_velocity;
     int autonomous_deadman_button, manual_deadman_button;
 	bool autonomous_deadman_on, manual_deadman_on, control_estop, proximity_stop; // deadman switch
+    double timeout, timeout_start;
 	double goal_heading;
     bool path_has_been_updated;
 
@@ -92,6 +93,7 @@ public:
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
         autonomous_deadman_on = false;
 		manual_deadman_on = false;
+        timeout_start = getWallTime();
 		control_estop = false;
 		proximity_stop = false;
         path_has_been_updated = false;
@@ -238,23 +240,39 @@ public:
 				//true_vel = sqrt(pow(linear_velocity,2)+pow(angular_velocity,2));
 				//steering_angle = angular_velocity/steering_gain;
 
-				geometry_msgs::Twist velocity_command;
-				velocity_command.linear.x = linear_velocity;
-				velocity_command.linear.y= 0.0;
-				velocity_command.linear.z= 0.0;
-				velocity_command.angular.x = 0.0;
-				velocity_command.angular.y = 0.0;
-				velocity_command.angular.z = angular_velocity;
-				cmd_vel_pub.publish(velocity_command);
+                // Publish Commands
+                // (the logic is currently set up this way to make the intensions clear that no command should be sent when in "manual" mode)
+                if (manual_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
+                    // Send no command
+                }
+                else if (autonomous_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
+                    // Send autonomous command
+    				geometry_msgs::Twist velocity_command;
+    				velocity_command.linear.x = linear_velocity;
+    				velocity_command.linear.y= 0.0;
+    				velocity_command.linear.z= 0.0;
+    				velocity_command.angular.x = 0.0;
+    				velocity_command.angular.y = 0.0;
+    				velocity_command.angular.z = angular_velocity;
+    				cmd_vel_pub.publish(velocity_command);
 
-                // Publish the raw Linear Velocity and Steering Angle
-                std_msgs::Float64 velocity_msg;
-                std_msgs::Float64 steer_msg;
-                velocity_msg.data = linear_velocity;
-                steer_msg.data = steering_angle;
-                lin_vel_pub.publish(velocity_msg);
-                steer_angle_pub.publish(steer_msg);
+                    // Publish the raw Linear Velocity and Steering Angle
+                    std_msgs::Float64 velocity_msg;
+                    std_msgs::Float64 steer_msg;
+                    velocity_msg.data = linear_velocity;
+                    steer_msg.data = steering_angle;
+                    lin_vel_pub.publish(velocity_msg);
+                    steer_angle_pub.publish(steer_msg);
+                }
+                else {
+                    // Joystick has timed out, send 0 velocity command
+                    // Do not send a steering angle command, so it remains where it is currently at.
+                    std_msgs::Float64 velocity_msg;
+                    velocity_msg.data = 0.0;
+                    lin_vel_pub.publish(velocity_msg);
+                }
 
+                // Publish lookahead path
 				vector<geometry_msgs::PoseStamped> plan;
 				ros::Time time_now = ros::Time::now();
 		        for (int i = segment; i < segment + lookahead_segments; i++) {
@@ -426,6 +444,7 @@ public:
 
         nh_.param("manual_deadman", manual_deadman_button, 4);
         nh_.param("autonomous_deadman", autonomous_deadman_button, 5);
+        nh_.param("timeout", timeout, 1.0);
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
@@ -446,6 +465,10 @@ public:
 
 	void joy_override(const sensor_msgs::Joy joy_msg)
     {
+        // Update timeout time
+        timeout_start = getWallTime();
+
+        // Update deadman buttons
         if (joy_msg.buttons[manual_deadman_button] == 1) {
             manual_deadman_on = true;
         }
