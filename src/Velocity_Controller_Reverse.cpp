@@ -7,6 +7,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath> // for M_PI
+#include <sys/time.h>
 #include <tf/tf.h>
 #include <tf/transform_listener.h>
 #include <sensor_msgs/Joy.h>
@@ -48,7 +49,9 @@ private:
     // State variables
     double steering_angle;
 	double angular_velocity, linear_velocity;
-	bool joystick_override, control_estop, proximity_stop; // deadman switch
+    int autonomous_deadman_button, manual_deadman_button;
+	bool autonomous_deadman_on, manual_deadman_on, control_estop, proximity_stop; // deadman switch
+    double timeout, timeout_start;
 	double goal_heading;
     bool path_has_been_updated;
 
@@ -82,13 +85,15 @@ public:
         cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop",20); // use with gazebo turtlebot
 		local_path_pub = nh_.advertise<nav_msgs::Path>("/local_path",20);
         // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
-		update_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::update_path,this);
-        controller_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::controller_loop,this);
+		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
+        controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
         lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
         steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
-		joystick_override = false;
+		autonomous_deadman_on = false;
+        manual_deadman_on = false;
+        timeout_start = getWallTime();
 		control_estop = false;
 		proximity_stop = false;
         path_has_been_updated = false;
@@ -102,6 +107,10 @@ public:
     {
         if (path_has_been_updated) {
             if(path_tracking_controller()) {
+                // Stop linear velocity
+                std_msgs::Float64 velocity_msg;
+                velocity_msg.data = 0.0;
+                lin_vel_pub.publish(velocity_msg);
                 ROS_INFO("DONE!");
             }
         }
@@ -137,10 +146,14 @@ public:
 				ros::param::set("/goal_bool",true);
 			}
 
-            // DEBUG: check this loop
-            cout << "along_track: " << along_track_error << "\n";
+            // // DEBUG: check this loop
+            // cout << "along_track: " << along_track_error << "\n";
 
 			while(along_track_error > goal_tol) {
+
+                // DEBUG: print along track error
+                int num_segments = local_path.size()-1;
+                printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                 // // DEBUG:
                 // cout << "*****************************************************" << endl;
@@ -148,7 +161,7 @@ public:
                 // cout << "*****************************************************" << endl;
 
 				nh_.param("/control_panel_node/control_estop", control_estop,false);
-				while(joystick_override || control_estop || proximity_stop) {
+				while(manual_deadman_on || control_estop || proximity_stop) {
 					nh_.param("/control_panel_node/control_estop", control_estop,false);
 					nh_.param("/proximity_check", proximity_stop,false);
 				}
@@ -179,7 +192,7 @@ public:
 				}
 
 				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
-				heading_error = goal_heading - pose.heading;
+				heading_error = goal_heading - wrapToPi(pose.heading + M_PI); // because the forklift is driving in reverse, the heading must be flipped 180 degrees
 				// computing smallest angle
 				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
 				if (heading_error < -M_PI) {heading_error=heading_error+(M_PI*2);}
@@ -215,25 +228,40 @@ public:
 				//true_vel = sqrt(pow(linear_velocity,2)+pow(angular_velocity,2));
 				//steering_angle = angular_velocity/steering_gain;
 
-				geometry_msgs::Twist velocity_command;
-				velocity_command.linear.x = linear_velocity;
-				velocity_command.linear.y= 0.0;
-				velocity_command.linear.z= 0.0;
-				velocity_command.angular.x = 0.0;
-				velocity_command.angular.y = 0.0;
-				velocity_command.angular.z = angular_velocity;
-				cmd_vel_pub.publish(velocity_command);
+                // Publish Commands
+                // (the logic is currently set up this way to make the intensions clear that no command should be sent when in "manual" mode)
+                if (manual_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
+                    // Send no command
+                }
+                else if (autonomous_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
+    				geometry_msgs::Twist velocity_command;
+    				velocity_command.linear.x = -linear_velocity; // because the forklift is driving in reverse, the velocity must be made negative
+    				velocity_command.linear.y= 0.0;
+    				velocity_command.linear.z= 0.0;
+    				velocity_command.angular.x = 0.0;
+    				velocity_command.angular.y = 0.0;
+    				velocity_command.angular.z = angular_velocity;
+    				//cmd_vel_pub.publish(velocity_command);
 
-                // Publish the raw Linear Velocity and Steering Angle
-                // NOTE: because the forklift is going in the reverse direction,
-                // the velocity and steering angle must be made negative.
-                std_msgs::Float64 velocity_msg;
-                std_msgs::Float64 steer_msg;
-                velocity_msg.data = -linear_velocity;
-                steer_msg.data = -steering_angle;
-                lin_vel_pub.publish(velocity_msg);
-                steer_angle_pub.publish(steer_msg);
+                    // Publish the raw Linear Velocity and Steering Angle
+                    // NOTE: because the forklift is going in the reverse
+                    // direction, the velocity must be made negative.
+                    std_msgs::Float64 velocity_msg;
+                    std_msgs::Float64 steer_msg;
+                    velocity_msg.data = -linear_velocity;
+                    steer_msg.data = steering_angle;
+                    lin_vel_pub.publish(velocity_msg);
+                    steer_angle_pub.publish(steer_msg);
+                }
+                else {
+                    // Joystick has timed out, send 0 velocity command
+                    // Do not send a steering angle command, so it remains where it is currently at.
+                    std_msgs::Float64 velocity_msg;
+                    velocity_msg.data = 0.0;
+                    lin_vel_pub.publish(velocity_msg);
+                }
 
+                // Publish lookahead path
 				vector<geometry_msgs::PoseStamped> plan;
 				ros::Time time_now = ros::Time::now();
 		        for (int i = segment; i < segment + lookahead_segments; i++) {
@@ -372,6 +400,12 @@ public:
 
 	void get_params()
     {
+        // Manually Set Parameters
+        nh_.setParam("maximum_linear_velocity", 0.5);
+        nh_.setParam("derivative_cte_gain", 0.1);
+        nh_.setParam("derivative_heading_gain", 0.01);
+        nh_.setParam("goal_tolerance",  0.3);
+
 		//nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 2.0);
 		nh_.param("maximum_angular_velocity",maximum_angular_velocity, 1.92);
@@ -385,6 +419,10 @@ public:
 		nh_.param("derivative_heading_gain", derivative_heading_gain, 1.0);
 		nh_.param("cross_track_error_deadband",cross_track_error_deadband, 0.3);
 		nh_.param("min_delta_time",min_delta_time,0.1);
+
+        nh_.param("manual_deadman", manual_deadman_button, 4);
+        nh_.param("autonomous_deadman", autonomous_deadman_button, 5);
+        nh_.param("timeout", timeout, 1.0);
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
@@ -403,10 +441,25 @@ public:
 		min_delta_time =config.min_delta_time;
 	}
 
-	void joy_override(const sensor_msgs::Joy joy_msg)
+    void joy_override(const sensor_msgs::Joy joy_msg)
     {
-		if(joy_msg.buttons[4] == 1){joystick_override = true;}
-		else{joystick_override = false;}
+        // Update timeout time
+        timeout_start = getWallTime();
+
+        // Update deadman buttons
+        if (joy_msg.buttons[manual_deadman_button] == 1) {
+            manual_deadman_on = true;
+        }
+		else {
+            manual_deadman_on = false;
+        }
+
+        if (joy_msg.buttons[autonomous_deadman_button] == 1) {
+            autonomous_deadman_on = true;
+        }
+		else {
+            autonomous_deadman_on = false;
+        }
 	}
 
     double wrapToPi(double angle)
@@ -416,6 +469,14 @@ public:
             angle += 2*M_PI;
         }
         return (angle - M_PI);
+    }
+
+    double getWallTime() {
+        struct timeval time;
+        if (gettimeofday(&time, NULL)) {
+            return 0;
+        }
+        return (double)time.tv_sec + (double)time.tv_usec*0.000001;
     }
 };
 

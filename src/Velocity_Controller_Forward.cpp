@@ -85,8 +85,8 @@ public:
         cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop",20); // use with gazebo turtlebot
 		local_path_pub = nh_.advertise<nav_msgs::Path>("/local_path",20);
         // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
-		update_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::update_path,this);
-        controller_path_sub = nh_.subscribe("/bspline_path/path",1, &VelocityController::controller_loop,this);
+		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
+        controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
         lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
         steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
@@ -254,7 +254,7 @@ public:
     				velocity_command.angular.x = 0.0;
     				velocity_command.angular.y = 0.0;
     				velocity_command.angular.z = angular_velocity;
-    				cmd_vel_pub.publish(velocity_command);
+    				//cmd_vel_pub.publish(velocity_command);
 
                     // Publish the raw Linear Velocity and Steering Angle
                     std_msgs::Float64 velocity_msg;
