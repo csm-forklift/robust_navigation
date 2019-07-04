@@ -17,6 +17,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Int8.h>
 
 #include <dynamic_reconfigure/server.h>
 #include <robust_navigation/GainsConfig.h>
@@ -33,6 +34,7 @@ private:
     // FIXME: This subscriber runs the path controller whenever it receives a path while the one above simply updates the path. There should be a better way to do this.
     ros::Subscriber controller_path_sub;
 	ros::Subscriber joystickoverideSubscriber_; // subscribes to deadman switch on joystick
+    ros::Subscriber gear_sub; // reads in the desired gear: forward, neutral, reverse
 	ros::Publisher cmd_vel_pub; // cmd vel to send to vehicle
 	ros::Publisher local_path_pub; // publishing the current segment we are looking at
     // Publishers for Linear Velocity and Steering Angle
@@ -54,6 +56,7 @@ private:
     double timeout, timeout_start;
 	double goal_heading;
     bool path_has_been_updated;
+    int gear; // indicates the forklift's gear: 1 = forward, 0 = neutral, -1 = reverse
 
     // Controller Parameters
     double steering_gain,cte_gain,error_gain,heading_gain,derivative_cte_gain,derivative_heading_gain; // gains for the controller
@@ -87,6 +90,7 @@ public:
         // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
 		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
         controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
+        gear_sub = nh_.subscribe("/forklift/gear", 1, &VelocityController::gearCallback, this);
         lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
         steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
@@ -151,9 +155,9 @@ public:
 
 			while(along_track_error > goal_tol) {
 
-                // DEBUG: print along track error
-                int num_segments = local_path.size()-1;
-                printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
+                // // DEBUG: print along track error
+                // int num_segments = local_path.size()-1;
+                // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                 // // DEBUG:
                 // cout << "*****************************************************" << endl;
@@ -230,7 +234,7 @@ public:
 
                 // Publish Commands
                 // (the logic is currently set up this way to make the intensions clear that no command should be sent when in "manual" mode)
-                if (manual_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
+                if ((manual_deadman_on and ((getWallTime() - timeout_start) < timeout)) or (gear != -1)) {
                     // Send no command
                 }
                 else if (autonomous_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
@@ -461,6 +465,16 @@ public:
             autonomous_deadman_on = false;
         }
 	}
+
+    void gearCallback(const std_msgs::Int8 msg)
+    {
+        gear = msg.data;
+
+        // Bound the gear to be -1, 0, or 1
+        if (gear != 1 and gear != -1) {
+            gear = 0;
+        }
+    }
 
     double wrapToPi(double angle)
     {
