@@ -49,7 +49,7 @@ private:
     double max_linear_vel, max_angular_vel; // robot constraints
 
     // State variables
-    double steering_angle;
+    double steering_angle, steering_angle_min, steering_angle_max;
 	double angular_velocity, linear_velocity;
     int autonomous_deadman_button, manual_deadman_button;
 	bool autonomous_deadman_on, manual_deadman_on, control_estop, proximity_stop; // deadman switch
@@ -151,7 +151,7 @@ public:
 			}
 
             // // DEBUG: check this loop
-            // cout << "along_track: " << along_track_error << "\n";
+            // printf("along_track: %0.04f, goal_tol: %0.03f\n", along_track_error, goal_tol);
 
 			while(along_track_error > goal_tol) {
 
@@ -221,7 +221,12 @@ public:
                 //==============================================================
                 // Set Steering Input
                 //==============================================================
-				steering_angle = heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error;  //check this
+				steering_angle = heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error;
+
+                // Bound the steering angle
+                steering_angle = max(steering_angle, steering_angle_min);
+                steering_angle = min(steering_angle, steering_angle_max);
+
 				angular_velocity = steering_gain * steering_angle;
 				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
 				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
@@ -381,12 +386,11 @@ public:
 			return false;
 		}
 
-        // The orientation Yaw needs to be flipped by PI radians because the forklift is driving backwards.
 		mat.setRotation(odom_base_transform.getRotation());
 		mat.getRPY(roll, pitch, yaw);
 		pose.x = odom_base_transform.getOrigin().getX();
 		pose.y = odom_base_transform.getOrigin().getY();
-		pose.heading = wrapToPi(yaw + M_PI);
+		pose.heading = wrapToPi(yaw);
 		return true;
 	}
 
@@ -408,7 +412,7 @@ public:
         nh_.setParam("maximum_linear_velocity", 0.5);
         nh_.setParam("derivative_cte_gain", 0.1);
         nh_.setParam("derivative_heading_gain", 0.01);
-        nh_.setParam("goal_tolerance",  0.3);
+        nh_.setParam("goal_tolerance",  0.1);
 
 		//nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 2.0);
@@ -427,6 +431,8 @@ public:
         nh_.param("manual_deadman", manual_deadman_button, 4);
         nh_.param("autonomous_deadman", autonomous_deadman_button, 5);
         nh_.param("timeout", timeout, 1.0);
+        nh_.param("/forklift/steering/min_angle", steering_angle_min, -75*(M_PI/180.0));
+        nh_.param("/forklift/steering/max_angle", steering_angle_max, -75*(M_PI/180.0));
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)

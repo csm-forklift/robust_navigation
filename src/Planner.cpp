@@ -120,7 +120,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
     origin.push_back((int)((pose.y - origin_y)/resolution));
     openset->push_back(origin); //add the origin
 
-    ROS_INFO("Robot Position: x=%f, y=%f",pose.x,pose.y); // Origin corresponds to odometry position of the robot
+    // ROS_INFO("Robot Position: x=%f, y=%f",pose.x,pose.y); // Origin corresponds to odometry position of the robot
     // ROS_INFO("Robot grid position: x=%d, y=%d", origin[0], origin[1]);
 
     bool goal_reached=0;
@@ -134,12 +134,12 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
         float Best_hueristic_cost_=100000000;
         //node_.param("/goal_bool", goal_reached, false);
 
-        // // FIXME: check openset size and goal bool
+        // // DEBUG: check openset size and goal bool
         // cout << "openset size: " << openset->size() << endl;
         // cout << "goal: " << goal_reached << endl;
 
         if (openset->size()==0 && goal_reached==0){
-            ROS_INFO("NO PATH TO FINAL OR INTERMEDIATE GOAL!");
+            // ROS_INFO("NO PATH TO FINAL OR INTERMEDIATE GOAL!");
             //ros::param::set("/control_panel_node/control_estop",true);
             optimal_path.clear();
             movement_cost.clear();
@@ -178,11 +178,11 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
                 // FIXME: need to assign goal tolerances as parameters rather than hardcoded numbers
                 if (abs(int_goal_.x - goal_.x) < resolution && abs(int_goal_.y - goal_.y) < resolution){
                     // ROS_INFO("FINAL GOAL REACHED! NEED ANOTHER GOAL");
-                    ROS_INFO("PATH TO FINAL GOAL CALCULATED");
+                    // ROS_INFO("PATH TO FINAL GOAL CALCULATED");
 		            // node_.setParam("/goal_bool",true);
                 }
                 else{
-                    ROS_INFO("PATH TO INTERMEDIATE GOAL CALCULATED!");
+                    // ROS_INFO("PATH TO INTERMEDIATE GOAL CALCULATED!");
             		// node_.setParam("/goal_bool",false);
                     // ros::param::set("/control_panel_node/control_estop",false);
                 }
@@ -214,6 +214,8 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
         // ROS_INFO("Bottom of while loop");
         // ROS_INFO("goal: %d", goal_reached);
     }
+
+    cout << "After While Loop\n";
 
     int i = (int_goal_.x - origin_x)/resolution;
     int j = (int_goal_.y - origin_y)/resolution;

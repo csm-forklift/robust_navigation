@@ -49,7 +49,7 @@ private:
     double max_linear_vel, max_angular_vel; // robot constraints
 
     // State variables
-    double steering_angle;
+    double steering_angle, steering_angle_min, steering_angle_max;
 	double angular_velocity, linear_velocity;
     int autonomous_deadman_button, manual_deadman_button;
 	bool autonomous_deadman_on, manual_deadman_on, control_estop, proximity_stop; // deadman switch
@@ -430,7 +430,7 @@ public:
         nh_.setParam("maximum_linear_velocity", 0.5);
         nh_.setParam("derivative_cte_gain", 0.1);
         nh_.setParam("derivative_heading_gain", 0.01);
-        nh_.setParam("goal_tolerance",  0.3);
+        nh_.setParam("goal_tolerance",  0.1);
 
         // Read in Parameters from Config file
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.5);
@@ -449,6 +449,8 @@ public:
         nh_.param("manual_deadman", manual_deadman_button, 4);
         nh_.param("autonomous_deadman", autonomous_deadman_button, 5);
         nh_.param("timeout", timeout, 1.0);
+        nh_.param("/forklift/steering/min_angle", steering_angle_min, -75*(M_PI/180.0));
+        nh_.param("/forklift/steering/max_angle", steering_angle_max, -75*(M_PI/180.0));
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
