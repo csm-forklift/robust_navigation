@@ -408,11 +408,11 @@ public:
 
 	void get_params()
     {
-        // Manually Set Parameters
-        nh_.setParam("maximum_linear_velocity", 0.5);
-        nh_.setParam("derivative_cte_gain", 0.1);
-        nh_.setParam("derivative_heading_gain", 0.01);
-        nh_.setParam("goal_tolerance",  0.1);
+        // // Manually Set Parameters
+        // nh_.setParam("maximum_linear_velocity", 0.5);
+        // nh_.setParam("derivative_cte_gain", 0.1);
+        // nh_.setParam("derivative_heading_gain", 0.01);
+        // nh_.setParam("goal_tolerance",  0.1);
 
 		//nh_.param("maximum_linear_velocity", maximum_linear_velocity, 1.0);
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 2.0);

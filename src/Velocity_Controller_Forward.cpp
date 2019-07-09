@@ -156,9 +156,9 @@ public:
             // Main control loop
 			while(along_track_error > goal_tol) {
 
-                // DEBUG: print along track error
-                int num_segments = local_path.size()-1;
-                printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
+                // // DEBUG: print along track error
+                // int num_segments = local_path.size()-1;
+                // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                 // // DEBUG:
                 // cout << "*****************************************************" << endl;
@@ -232,12 +232,19 @@ public:
                 // cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
                 // cout << "Heading derivative: " << derivative_heading_error << "\n";
 
-                steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);  //check this
+                steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);
+
+                // Bound the steering angle
+                steering_angle = max(steering_angle, steering_angle_min);
+                steering_angle = min(steering_angle, steering_angle_max);
+
                 // The steering angle must be negated to give the appropriate angular velocity since the system is rear-steering when going forward.
 				angular_velocity = steering_gain * -steering_angle;
 				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
 				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
 
+                // DEBUG:
+                printf("heading: %0.04f, target: %0.04f, error: %0.04f, angle: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
 
 				// we need to send steering angle and velocity to the forklift.
 				// we also need to make this controller go backwards.
@@ -265,6 +272,10 @@ public:
                     std_msgs::Float64 steer_msg;
                     velocity_msg.data = linear_velocity;
                     steer_msg.data = steering_angle;
+
+                    // DEBUG:
+                    cout << "Forward is publishing\n";
+
                     lin_vel_pub.publish(velocity_msg);
                     steer_angle_pub.publish(steer_msg);
                 }
@@ -427,15 +438,15 @@ public:
 	void get_params()
     {
         // Manually Set Parameters
-        nh_.setParam("maximum_linear_velocity", 0.5);
-        nh_.setParam("derivative_cte_gain", 0.1);
-        nh_.setParam("derivative_heading_gain", 0.01);
-        nh_.setParam("goal_tolerance",  0.1);
+        // nh_.setParam("maximum_linear_velocity", 0.5);
+        // nh_.setParam("derivative_cte_gain", 0.1);
+        // nh_.setParam("derivative_heading_gain", 0.01);
+        // nh_.setParam("goal_tolerance",  0.1);
 
         // Read in Parameters from Config file
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.5);
 		nh_.param("maximum_angular_velocity",maximum_angular_velocity, 1.92);
-		nh_.param("Num_of_segments_ahead", Num_of_segments_ahead, 1);
+		nh_.param("Num_of_segments_ahead", Num_of_segments_ahead, 5);
 		nh_.param("goal_tolerance", goal_tol, 0.3);
 		nh_.param("steering_gain",steering_gain, 1.0);
 	    nh_.param("error_gain",error_gain,1.0);
