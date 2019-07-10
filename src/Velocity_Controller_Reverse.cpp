@@ -90,7 +90,7 @@ public:
         // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
 		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
         controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
-        gear_sub = nh_.subscribe("/forklift/gear", 1, &VelocityController::gearCallback, this);
+        gear_sub = nh_.subscribe("/velocity_node/gear", 1, &VelocityController::gearCallback, this);
         lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
         steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
