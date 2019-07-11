@@ -432,7 +432,7 @@ public:
         nh_.param("autonomous_deadman", autonomous_deadman_button, 5);
         nh_.param("timeout", timeout, 1.0);
         nh_.param("/forklift/steering/min_angle", steering_angle_min, -75*(M_PI/180.0));
-        nh_.param("/forklift/steering/max_angle", steering_angle_max, -75*(M_PI/180.0));
+        nh_.param("/forklift/steering/max_angle", steering_angle_max, 75*(M_PI/180.0));
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
