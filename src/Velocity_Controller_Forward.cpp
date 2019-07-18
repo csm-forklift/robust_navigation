@@ -35,6 +35,7 @@ private:
     ros::Subscriber controller_path_sub;
 	ros::Subscriber joystickoverideSubscriber_; // subscribes to deadman switch on joystick
     ros::Subscriber gear_sub; // reads in the desired gear: forward, neutral, reverse
+    ros::Subscriber control_mode_sub; // reads the current control mode set by the master controller
 	ros::Publisher cmd_vel_pub; // cmd vel to send to vehicle
 	ros::Publisher local_path_pub; // publishing the current segment we are looking at
     // Publishers for Linear Velocity and Steering Angle
@@ -59,6 +60,8 @@ private:
     int gear; // indicates the forklift's gear: 1 = forward, 0 = neutral, -1 = reverse
 
     // Controller Parameters
+    int control_mode; // this node publishes only when this variable is a specific value
+    vector<int> available_control_modes; // vector of possible numbers the 'control_mode' can be to turn this node on
     double steering_gain,cte_gain,error_gain,heading_gain,derivative_cte_gain,derivative_heading_gain; // gains for the controller
     double cross_track_error,delta_cross_track_error,derivative_cross_track_error,heading_error,delta_heading_error,derivative_heading_error;
 	double along_track_error;
@@ -91,6 +94,7 @@ public:
 		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
         controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
         gear_sub = nh_.subscribe("/velocity_node/gear", 1, &VelocityController::gearCallback, this);
+        control_mode_sub = nh_.subscribe("/control_mode", 1, &VelocityController::controlModeCallback, this);
         lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
         steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
 
@@ -102,6 +106,25 @@ public:
 		proximity_stop = false;
         path_has_been_updated = false;
 
+        //===== Print out possible values for control mode =====//
+        // Pushback more numbers to allow this controller to operate in more
+        // modes
+        control_mode = 0; // start off with no controller operating
+        available_control_modes.push_back(1);
+        string message = "Available control_modes for [" + ros::this_node::getName() + "]: ";
+        for (int i = 0; i < available_control_modes.size(); ++i) {
+            char msg_buffer[10]; // increase size if more digits are needed
+            sprintf(msg_buffer, "%d", available_control_modes.at(i));
+            message += msg_buffer;
+            if (i != available_control_modes.size() - 1) {
+                message += ", ";
+            }
+            else {
+                message += '\n';
+            }
+        }
+        ROS_INFO("%s", message.c_str());
+
         // cout << "*****************************************************" << endl;
         // cout << "1) Velocity controller constructor" << endl;
         // cout << "*****************************************************" << endl;
@@ -110,12 +133,14 @@ public:
     void controller_loop(nav_msgs::Path path)
     {
         if (path_has_been_updated) {
-            if(path_tracking_controller()) {
-                // Stop linear velocity
-                std_msgs::Float64 velocity_msg;
-                velocity_msg.data = 0.0;
-                lin_vel_pub.publish(velocity_msg);
-                ROS_INFO("DONE!");
+            if (checkControlMode(control_mode, available_control_modes)) {
+                if(path_tracking_controller()) {
+                    // Stop linear velocity
+                    std_msgs::Float64 velocity_msg;
+                    velocity_msg.data = 0.0;
+                    lin_vel_pub.publish(velocity_msg);
+                    ROS_INFO("DONE!");
+                }
             }
         }
     }
@@ -150,167 +175,170 @@ public:
 				ros::param::set("/goal_bool",true);
 			}
 
-            // // DEBUG: print along track error
-            // cout << "Along track error: " << along_track_error << "\n";
+            // // DEBUG: check this loop
+            // printf("along_track: %0.04f, goal_tol: %0.03f\n", along_track_error, goal_tol);
 
             // Main control loop
 			while(along_track_error > goal_tol) {
 
-                // // DEBUG: print along track error
-                // int num_segments = local_path.size()-1;
-                // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
+                if (checkControlMode(control_mode, available_control_modes)) {
+                    // // DEBUG: print along track error
+                    // int num_segments = local_path.size()-1;
+                    // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
-                // // DEBUG:
-                // cout << "*****************************************************" << endl;
-                // std::cout << "3) Entered velocity command loop" << std::endl;
-                // cout << "*****************************************************" << endl;
+                    // // DEBUG:
+                    // cout << "*****************************************************" << endl;
+                    // std::cout << "3) Entered velocity command loop" << std::endl;
+                    // cout << "*****************************************************" << endl;
 
-				nh_.param("/control_panel_node/control_estop", control_estop,false);
-				while(manual_deadman_on || control_estop || proximity_stop) {
-					nh_.param("/control_panel_node/control_estop", control_estop,false);
-					nh_.param("/proximity_check", proximity_stop,false);
-				}
+    				nh_.param("/control_panel_node/control_estop", control_estop,false);
+    				while(manual_deadman_on || control_estop || proximity_stop) {
+    					nh_.param("/control_panel_node/control_estop", control_estop,false);
+    					nh_.param("/proximity_check", proximity_stop,false);
+    				}
 
-				aquire_robotpose();
+    				aquire_robotpose();
 
-				start_point.x = local_path[segment][0] ;
-				start_point.y = local_path[segment][1] ;
-				end_point.x = local_path[segment+1][0] ;
-				end_point.y = local_path[segment+1][1] ;
+    				start_point.x = local_path[segment][0] ;
+    				start_point.y = local_path[segment][1] ;
+    				end_point.x = local_path[segment+1][0] ;
+    				end_point.y = local_path[segment+1][1] ;
 
-				remaining_segments = local_path.size() - segment;
-				lookahead_segments = min(Num_of_segments_ahead, remaining_segments);
-				double bendahead = path_curvature(pose.heading, lookahead_segments);
-				double velocity_constraint = (1 - pow((bendahead/(3.14*0.6)),1.5));
+    				remaining_segments = local_path.size() - segment;
+    				lookahead_segments = min(Num_of_segments_ahead, remaining_segments);
+    				double bendahead = path_curvature(pose.heading, lookahead_segments);
+    				double velocity_constraint = (1 - pow((bendahead/(3.14*0.6)),1.5));
 
-				velocity_constraint = max(velocity_constraint,0.3);
+    				velocity_constraint = max(velocity_constraint,0.3);
 
-                //==============================================================
-                // Set Velocity Input
-                //==============================================================
-				linear_velocity = velocity_constraint*maximum_linear_velocity;
+                    //==============================================================
+                    // Set Velocity Input
+                    //==============================================================
+    				linear_velocity = velocity_constraint*maximum_linear_velocity;
 
-				// Slowing down if approaching last goal
-				if (segment == local_path.size()-1) {
-					double segment_length = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1]- local_path[segment][1]),2));
-					double approaching_velocity = (abs(along_track_error)/segment_length)*linear_velocity;
-					linear_velocity = min(linear_velocity, approaching_velocity);
-				}
+    				// Slowing down if approaching last goal
+    				if (segment == local_path.size()-1) {
+    					double segment_length = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1]- local_path[segment][1]),2));
+    					double approaching_velocity = (abs(along_track_error)/segment_length)*linear_velocity;
+    					linear_velocity = min(linear_velocity, approaching_velocity);
+    				}
 
-				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
-				heading_error = goal_heading - pose.heading;
-				// computing smallest angle
-				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
-				if (heading_error < -M_PI) {heading_error=heading_error+(M_PI*2);}
+    				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
+    				heading_error = goal_heading - pose.heading;
+    				// computing smallest angle
+    				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
+    				if (heading_error < -M_PI) {heading_error=heading_error+(M_PI*2);}
 
-				cross_track_error = compute_cross_track_error(pose.x, pose.y, start_point.x, start_point.y, end_point.x, end_point.y);
-				 // This is to avoid oscillation of the robot around the path
-				if(abs(cross_track_error) <= cross_track_error_deadband) {cross_track_error = 0.0;}
+    				cross_track_error = compute_cross_track_error(pose.x, pose.y, start_point.x, start_point.y, end_point.x, end_point.y);
+    				 // This is to avoid oscillation of the robot around the path
+    				if(abs(cross_track_error) <= cross_track_error_deadband) {cross_track_error = 0.0;}
 
-				delta_time = ros::Time::now() - previous_time;
-				if(delta_time > ros::Duration(min_delta_time)) {
-					previous_time = ros::Time::now();
-					delta_cross_track_error = cross_track_error - previous_cross_track_error;
-					derivative_cross_track_error = derivative_cte_gain * delta_cross_track_error/delta_time.toSec();
-					previous_cross_track_error = cross_track_error;
+    				delta_time = ros::Time::now() - previous_time;
+    				if(delta_time > ros::Duration(min_delta_time)) {
+    					previous_time = ros::Time::now();
+    					delta_cross_track_error = cross_track_error - previous_cross_track_error;
+    					derivative_cross_track_error = derivative_cte_gain * delta_cross_track_error/delta_time.toSec();
+    					previous_cross_track_error = cross_track_error;
 
-					delta_heading_error = heading_error - previous_heading_error;
-					derivative_heading_error = derivative_heading_gain * delta_heading_error/delta_time.toSec();
-					previous_heading_error = heading_error;
-				}
+    					delta_heading_error = heading_error - previous_heading_error;
+    					derivative_heading_error = derivative_heading_gain * delta_heading_error/delta_time.toSec();
+    					previous_heading_error = heading_error;
+    				}
 
-                //==============================================================
-                // Set Steering Input
-                //==============================================================
-                // NOTE: because the forklift is rear-steering when going in the forward direction, a negative steering angle results in a left-hand turn which is a positive angular velocity. This controller was designed for a front-steering system, so the steering angle must be negated.
+                    //==============================================================
+                    // Set Steering Input
+                    //==============================================================
+                    // NOTE: because the forklift is rear-steering when going in the forward direction, a negative steering angle results in a left-hand turn which is a positive angular velocity. This controller was designed for a front-steering system, so the steering angle must be negated.
 
-                // // DEBUG: Check controller terms
-                // cout << "Prev heading error: " << previous_heading_error << "\n";
-                // cout << "Curr heading error: " << heading_error << "\n";
-                // cout << "Heading: " << heading_gain*heading_error << "\n";
-                // cout << "Cross-track: " << error_gain*atan2(cte_gain*cross_track_error,linear_velocity) << "\n";
-                // cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
-                // cout << "Heading derivative: " << derivative_heading_error << "\n";
+                    // // DEBUG: Check controller terms
+                    // cout << "Prev heading error: " << previous_heading_error << "\n";
+                    // cout << "Curr heading error: " << heading_error << "\n";
+                    // cout << "Heading: " << heading_gain*heading_error << "\n";
+                    // cout << "Cross-track: " << error_gain*atan2(cte_gain*cross_track_error,linear_velocity) << "\n";
+                    // cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
+                    // cout << "Heading derivative: " << derivative_heading_error << "\n";
 
-                steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);
+                    steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);
 
-                // Bound the steering angle
-                steering_angle = max(steering_angle, steering_angle_min);
-                steering_angle = min(steering_angle, steering_angle_max);
+                    // Bound the steering angle
+                    steering_angle = max(steering_angle, steering_angle_min);
+                    steering_angle = min(steering_angle, steering_angle_max);
 
-                // The steering angle must be negated to give the appropriate angular velocity since the system is rear-steering when going forward.
-				angular_velocity = steering_gain * -steering_angle;
-				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
-				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
-
-                // DEBUG:
-                printf("heading: %0.04f, target: %0.04f, error: %0.04f, angle: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
-
-				// we need to send steering angle and velocity to the forklift.
-				// we also need to make this controller go backwards.
-				//true_vel = sqrt(pow(linear_velocity,2)+pow(angular_velocity,2));
-				//steering_angle = angular_velocity/steering_gain;
-
-                // Publish Commands
-                // (the logic is currently set up this way to make the intensions clear that no command should be sent when in "manual" mode)
-                if ((manual_deadman_on and ((getWallTime() - timeout_start) < timeout)) or (gear != 1)) {
-                    // Send no command
-                }
-                else if (autonomous_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
-                    // Send autonomous command
-    				geometry_msgs::Twist velocity_command;
-    				velocity_command.linear.x = linear_velocity;
-    				velocity_command.linear.y= 0.0;
-    				velocity_command.linear.z= 0.0;
-    				velocity_command.angular.x = 0.0;
-    				velocity_command.angular.y = 0.0;
-    				velocity_command.angular.z = angular_velocity;
-    				//cmd_vel_pub.publish(velocity_command);
-
-                    // Publish the raw Linear Velocity and Steering Angle
-                    std_msgs::Float64 velocity_msg;
-                    std_msgs::Float64 steer_msg;
-                    velocity_msg.data = linear_velocity;
-                    steer_msg.data = steering_angle;
+                    // The steering angle must be negated to give the appropriate angular velocity since the system is rear-steering when going forward.
+    				angular_velocity = steering_gain * -steering_angle;
+    				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
+    				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
 
                     // DEBUG:
-                    cout << "Forward is publishing\n";
+                    printf("heading: %0.04f, target: %0.04f, error: %0.04f, angle: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
 
-                    lin_vel_pub.publish(velocity_msg);
-                    steer_angle_pub.publish(steer_msg);
-                }
-                else {
-                    // Joystick has timed out, send 0 velocity command
-                    // Do not send a steering angle command, so it remains where it is currently at.
-                    std_msgs::Float64 velocity_msg;
-                    velocity_msg.data = 0.0;
-                    lin_vel_pub.publish(velocity_msg);
+    				// we need to send steering angle and velocity to the forklift.
+    				// we also need to make this controller go backwards.
+    				//true_vel = sqrt(pow(linear_velocity,2)+pow(angular_velocity,2));
+    				//steering_angle = angular_velocity/steering_gain;
+
+                    // Publish Commands
+                    // (the logic is currently set up this way to make the intensions clear that no command should be sent when in "manual" mode)
+                    if ((manual_deadman_on and ((getWallTime() - timeout_start) < timeout)) or (gear != 1)) {
+                        // Send no command
+                    }
+                    else if (autonomous_deadman_on and ((getWallTime() - timeout_start) < timeout)) {
+                        // Send autonomous command
+        				geometry_msgs::Twist velocity_command;
+        				velocity_command.linear.x = linear_velocity;
+        				velocity_command.linear.y= 0.0;
+        				velocity_command.linear.z= 0.0;
+        				velocity_command.angular.x = 0.0;
+        				velocity_command.angular.y = 0.0;
+        				velocity_command.angular.z = angular_velocity;
+        				//cmd_vel_pub.publish(velocity_command);
+
+                        // Publish the raw Linear Velocity and Steering Angle
+                        std_msgs::Float64 velocity_msg;
+                        std_msgs::Float64 steer_msg;
+                        velocity_msg.data = linear_velocity;
+                        steer_msg.data = steering_angle;
+
+                        // DEBUG:
+                        cout << "Forward is publishing\n";
+
+                        lin_vel_pub.publish(velocity_msg);
+                        steer_angle_pub.publish(steer_msg);
+                    }
+                    else {
+                        // Joystick has timed out, send 0 velocity command
+                        // Do not send a steering angle command, so it remains where it is currently at.
+                        std_msgs::Float64 velocity_msg;
+                        velocity_msg.data = 0.0;
+                        lin_vel_pub.publish(velocity_msg);
+                    }
+
+                    // Publish lookahead path
+    				vector<geometry_msgs::PoseStamped> plan;
+    				ros::Time time_now = ros::Time::now();
+    		        for (int i = segment; i < segment + lookahead_segments; i++) {
+    					geometry_msgs::PoseStamped local_plan;
+    			        tf::Quaternion quat = tf::createQuaternionFromYaw(0);
+    	 	            local_plan.header.seq = i;
+    		            local_plan.header.stamp = time_now;
+    		            local_plan.header.frame_id = "odom";
+    		            local_plan.pose.position.x = local_path[i][0];  // Latitude
+    		            local_plan.pose.position.y = local_path[i][1];  // Longitude
+        		        local_plan.pose.orientation.x = quat.x();
+    			        local_plan.pose.orientation.y = quat.y();
+    			        local_plan.pose.orientation.z = quat.z();
+    			        local_plan.pose.orientation.w = quat.w();
+    			        plan.push_back(local_plan);
+    		        }
+    		        nav_msgs::Path localplan2publish;
+    				localplan2publish.poses = plan;
+    		    	localplan2publish.header.seq = sequence++;
+    		    	localplan2publish.header.stamp = ros::Time::now();
+    		    	localplan2publish.header.frame_id = "odom";
+    	      		local_path_pub.publish(localplan2publish);
+    	      		plan.clear();
                 }
 
-                // Publish lookahead path
-				vector<geometry_msgs::PoseStamped> plan;
-				ros::Time time_now = ros::Time::now();
-		        for (int i = segment; i < segment + lookahead_segments; i++) {
-					geometry_msgs::PoseStamped local_plan;
-			        tf::Quaternion quat = tf::createQuaternionFromYaw(0);
-	 	            local_plan.header.seq = i;
-		            local_plan.header.stamp = time_now;
-		            local_plan.header.frame_id = "odom";
-		            local_plan.pose.position.x = local_path[i][0];  // Latitude
-		            local_plan.pose.position.y = local_path[i][1];  // Longitude
-    		        local_plan.pose.orientation.x = quat.x();
-			        local_plan.pose.orientation.y = quat.y();
-			        local_plan.pose.orientation.z = quat.z();
-			        local_plan.pose.orientation.w = quat.w();
-			        plan.push_back(local_plan);
-		        }
-		        nav_msgs::Path localplan2publish;
-				localplan2publish.poses = plan;
-		    	localplan2publish.header.seq = sequence++;
-		    	localplan2publish.header.stamp = ros::Time::now();
-		    	localplan2publish.header.frame_id = "odom";
-	      		local_path_pub.publish(localplan2publish);
-	      		plan.clear();
 				along_track_error = compute_along_track_error();
 			}
 
@@ -511,6 +539,11 @@ public:
         }
     }
 
+    void controlModeCallback(const std_msgs::Int8 msg)
+    {
+        control_mode = msg.data;
+    }
+
     double wrapToPi(double angle)
     {
         angle = fmod(angle + M_PI, 2*M_PI);
@@ -526,6 +559,19 @@ public:
             return 0;
         }
         return (double)time.tv_sec + (double)time.tv_usec*0.000001;
+    }
+
+    bool checkControlMode(int mode, vector<int> vector_of_modes)
+    {
+        // Use 'find' on the vector to determine existence of 'mode'
+        vector<int>::iterator it;
+        it = find(vector_of_modes.begin(), vector_of_modes.end(), mode);
+        if (it != vector_of_modes.end()) {
+            return true;
+        }
+        else {
+            return false;
+        }
     }
 };
 
