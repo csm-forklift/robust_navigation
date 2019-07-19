@@ -321,7 +321,7 @@ public:
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level){
 		maximum_linear_velocity =config.maximum_linear_velocity;
 		maximum_angular_velocity = config.maximum_angular_velocity;
-		goal_tol =config.goal_tol;
+		goal_tol =config.goal_tolerance;
 		Num_of_segments_ahead = config.num_of_segments_ahead;
 		steering_gain = config.steering_gain;
 	    error_gain = config.error_gain;

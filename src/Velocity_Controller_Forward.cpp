@@ -69,7 +69,7 @@ private:
     double cross_track_error_deadband; //stops path oscillation
     double goal_tol; // robot tolerance constraint
     double min_delta_time;
-    int Num_of_segments_ahead,sequence; // changes depends on path
+    int num_of_segments_ahead,sequence; // changes depends on path
 
 	vector< vector<double> > local_path;
 	int segment;
@@ -182,9 +182,10 @@ public:
 			while(along_track_error > goal_tol) {
 
                 if (checkControlMode(control_mode, available_control_modes)) {
-                    // // DEBUG: print along track error
-                    // int num_segments = local_path.size()-1;
-                    // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
+                    // DEBUG: print along track error
+                    printf("Foward\n");
+                    int num_segments = local_path.size()-1;
+                    printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                     // // DEBUG:
                     // cout << "*****************************************************" << endl;
@@ -205,7 +206,7 @@ public:
     				end_point.y = local_path[segment+1][1] ;
 
     				remaining_segments = local_path.size() - segment;
-    				lookahead_segments = min(Num_of_segments_ahead, remaining_segments);
+    				lookahead_segments = min(num_of_segments_ahead, remaining_segments);
     				double bendahead = path_curvature(pose.heading, lookahead_segments);
     				double velocity_constraint = (1 - pow((bendahead/(3.14*0.6)),1.5));
 
@@ -474,7 +475,7 @@ public:
         // Read in Parameters from Config file
         nh_.param("maximum_linear_velocity", maximum_linear_velocity, 0.5);
 		nh_.param("maximum_angular_velocity",maximum_angular_velocity, 1.92);
-		nh_.param("Num_of_segments_ahead", Num_of_segments_ahead, 5);
+		nh_.param("num_of_segments_ahead", num_of_segments_ahead, 5);
 		nh_.param("goal_tolerance", goal_tol, 0.3);
 		nh_.param("steering_gain",steering_gain, 1.0);
 	    nh_.param("error_gain",error_gain,1.0);
@@ -494,18 +495,18 @@ public:
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
     {
-		maximum_linear_velocity =config.maximum_linear_velocity;
+		maximum_linear_velocity = config.maximum_linear_velocity;
 		maximum_angular_velocity = config.maximum_angular_velocity;
-		goal_tol = config.goal_tol;
-		Num_of_segments_ahead = config.num_of_segments_ahead;
+		goal_tol = config.goal_tolerance;
+		num_of_segments_ahead = config.num_of_segments_ahead;
 		steering_gain = config.steering_gain;
 	    error_gain = config.error_gain;
-	    cte_gain =config.cte_gain;
+	    cte_gain = config.cte_gain;
 		heading_gain = config.heading_gain;
 		cross_track_error_deadband =  config.cross_track_error_deadband;
-		derivative_cte_gain=config.derivative_cte_gain;
+		derivative_cte_gain = config.derivative_cte_gain;
 		derivative_heading_gain = config.derivative_heading_gain;
-		min_delta_time =config.min_delta_time;
+		min_delta_time = config.min_delta_time;
 	}
 
 	void joy_override(const sensor_msgs::Joy joy_msg)
