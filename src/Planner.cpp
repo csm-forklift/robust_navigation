@@ -37,8 +37,8 @@ void pathplan::init(){
 void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
 { // need to input goal state in x,y terms //need an update parameter
 
-    node_.param("/control_panel_node/goal_x", goal_.x, 10.0);
-    node_.param("/control_panel_node/goal_y", goal_.y, 1.0);
+    node_.param("/control_panel_node/goal_x", goal_.x, 0.0);
+    node_.param("/control_panel_node/goal_y", goal_.y, 0.0);
 	//initialize nav_msgs::Path
     path = node_.advertise<nav_msgs::Path>("/path",1,true);
 
@@ -57,7 +57,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
         return;
     }
 
-    ROS_INFO("Final Goal: x=%f, y=%f", goal_.x, goal_.y);
+    // ROS_INFO("Final Goal: x=%f, y=%f", goal_.x, goal_.y);
 
     //Map parameters
     // For a robot-centric map, the origin should be the robot's pose
@@ -163,7 +163,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
             double y_1_world = y_1_*resolution + origin_y;
             if (abs(x_1_world - int_goal_.x) < resolution/2 && abs(y_1_world - int_goal_.y) < resolution/2){ //checking if we have reached intermediate goal point
 
-                // ROS_INFO("(x, y) world: (%f, %f)", x_1_world, y_1_world);
+                ROS_INFO("(x, y) world: (%f, %f)", x_1_world, y_1_world);
 
                 if(temp_step.size()>=1){
                     temp_step.erase(temp_step.begin()+0);
@@ -189,7 +189,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
                 break;
             }
             total_cost_=movement_cost.at(x_1_+width/2).at(y_1_+height/2)+hueristic_cost_.at(x_1_+width/2).at(y_1_+height/2);//movement+grid cost
-            // ROS_INFO("Total_cost=%f, x=%d, y=%d",total_cost_,x_1_,y_1_);
+            ROS_INFO("Total_cost=%f, x=%d, y=%d",total_cost_,x_1_,y_1_);
 
             if ( (total_cost_ == temp_cost_ && hueristic_cost_.at(x_1_+width/2).at(y_1_+height/2) <= Best_hueristic_cost_) || (total_cost_<temp_cost_ && goal_reached==0)) {
                 if(temp_step.size()>=1){
@@ -373,15 +373,19 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
     {
         int x = i%(width) - width/2;
         int y = i/(height) - height/2;
+        // int y = i/width - height/2;
         float cost =  sqrt(pow((x*resolution+origin_x)-goal_.x,2) + pow((y*resolution+origin_y)-goal_.y,2));
+
+        // hueristic_cost_.at(i%width).at(int(i/width)) = cost;
         hueristic_cost_.at(i%height).at(int(i/width)) = cost; // euclidean + occupied cost
-        //ROS_INFO("x=%f,y=%f,cost=%f",x,y,cost);
+        // ROS_INFO("x=%d,y=%d,cost=%f",x,y,cost);
 
         float radius_cost = (1/resolution); //dilate cost around the obstacle
         float radius_obstacle = (0.2/resolution); // dilate obstacle
         if (test_map_.data[i]==100){ //dilate cost
             for(int j=0;j<int(radius_cost);j++){
                 for (int k=0;k<poss_path_->size();k++){
+
                 int x_1 = x + j*(*poss_path_)[k][0];
                 int y_1 = y + j*(*poss_path_)[k][1];
                     if (x_1 > -width/2 && x_1<width/2 && y_1 > -height/2 && y_1<height/2){
@@ -395,9 +399,8 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
                         // movement_cost.at(x_1+width/2).at(y_1+height/2)=0;
 
                         */
+
                         movement_cost.at(x_1+width/2).at(y_1+height/2)=0;
-
-
                     }
                 }
             }
@@ -409,7 +412,7 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
             best_hueristic_cost_= cost;
         }
     }
-    ROS_INFO("Intermediate Goal: x=%f, y=%f", int_goal_.x, int_goal_.y);
+    // ROS_INFO("Intermediate Goal: x=%f, y=%f", int_goal_.x, int_goal_.y);
 }
 
 
