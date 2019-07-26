@@ -95,8 +95,8 @@ public:
         controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
         gear_sub = nh_.subscribe("/velocity_node/gear", 1, &VelocityController::gearCallback, this);
         control_mode_sub = nh_.subscribe("/control_mode", 1, &VelocityController::controlModeCallback, this);
-        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
-        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
+        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/velocity_node/velocity_setpoint", 1);
+        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/steering_node/angle_setpoint", 1);
 
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
 		autonomous_deadman_on = false;
@@ -110,7 +110,8 @@ public:
         // Pushback more numbers to allow this controller to operate in more
         // modes
         control_mode = 0; // start off with no controller operating
-        available_control_modes.push_back(2);
+        available_control_modes.push_back(2);        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/velocity_node/velocity_setpoint", 1);
+
         string message = "Available control_modes for [" + ros::this_node::getName() + "]: ";
         for (int i = 0; i < available_control_modes.size(); ++i) {
             char msg_buffer[10]; // increase size if more digits are needed
@@ -179,13 +180,13 @@ public:
             // printf("along_track: %0.04f, goal_tol: %0.03f\n", along_track_error, goal_tol);
 
             // Main control loop
-			while(along_track_error > goal_tol) {
+			while((along_track_error > goal_tol) && ros::ok()) {
 
                 if (checkControlMode(control_mode, available_control_modes)) {
-                    // DEBUG: print along track error
-                    printf("Reverse\n");
-                    int num_segments = local_path.size()-1;
-                    printf("Segment %d of %d, error: %0.4g, tol: %0.4g\n", segment, num_segments, along_track_error, goal_tol);
+                    // // DEBUG: print along track error
+                    // printf("Reverse\n");
+                    // int num_segments = local_path.size()-1;
+                    // printf("Segment %d of %d, error: %0.4g, tol: %0.4g\n", segment, num_segments, along_track_error, goal_tol);
 
                     // // DEBUG:
                     // cout << "*****************************************************" << endl;
@@ -227,6 +228,10 @@ public:
 
     				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
     				heading_error = goal_heading - wrapToPi(pose.heading + M_PI); // because the forklift is driving in reverse, the heading must be flipped 180 degrees
+
+                    // DEBUG:
+                    cout << "End point (" << end_point.x << ", " << end_point.y << ") Start point (" << start_point.x << ", " << start_point.y << ")\n";
+
     				// computing smallest angle
     				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
     				if (heading_error < -M_PI) {heading_error=heading_error+(M_PI*2);}
@@ -245,7 +250,6 @@ public:
     					delta_heading_error = heading_error - previous_heading_error;
     					derivative_heading_error = derivative_heading_gain * delta_heading_error/delta_time.toSec();
     					previous_heading_error = heading_error;
-
     				}
 
                     //==============================================================
@@ -261,6 +265,8 @@ public:
     				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
     				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
 
+                    // DEBUG:
+                    printf("[reverse] heading: %0.04f, target: %0.04f, error: %0.04f, steer: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
 
     				// we need to send steering angle and velocity to the forklift.
     				// we also need to make this controller go backwards.
@@ -289,6 +295,10 @@ public:
                         std_msgs::Float64 steer_msg;
                         velocity_msg.data = -linear_velocity;
                         steer_msg.data = steering_angle;
+
+                        // DEBUG:
+                        cout << "Reverse velocity pub\n";
+
                         lin_vel_pub.publish(velocity_msg);
                         steer_angle_pub.publish(steer_msg);
                     }

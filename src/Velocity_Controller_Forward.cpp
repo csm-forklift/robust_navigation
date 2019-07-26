@@ -95,8 +95,8 @@ public:
         controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
         gear_sub = nh_.subscribe("/velocity_node/gear", 1, &VelocityController::gearCallback, this);
         control_mode_sub = nh_.subscribe("/control_mode", 1, &VelocityController::controlModeCallback, this);
-        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/controls/velocity_setpoint", 1);
-        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/controls/angle_setpoint", 1);
+        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/velocity_node/velocity_setpoint", 1);
+        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/steering_node/angle_setpoint", 1);
 
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
         autonomous_deadman_on = false;
@@ -179,13 +179,13 @@ public:
             // printf("along_track: %0.04f, goal_tol: %0.03f\n", along_track_error, goal_tol);
 
             // Main control loop
-			while(along_track_error > goal_tol) {
+			while((along_track_error > goal_tol) && ros::ok()) {
 
                 if (checkControlMode(control_mode, available_control_modes)) {
-                    // DEBUG: print along track error
-                    printf("Foward\n");
-                    int num_segments = local_path.size()-1;
-                    printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
+                    // // DEBUG: print along track error
+                    // printf("Foward\n");
+                    // int num_segments = local_path.size()-1;
+                    // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                     // // DEBUG:
                     // cout << "*****************************************************" << endl;
@@ -271,7 +271,7 @@ public:
     				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
 
                     // DEBUG:
-                    printf("heading: %0.04f, target: %0.04f, error: %0.04f, angle: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
+                    printf("[forward] heading: %0.04f, target: %0.04f, error: %0.04f, steer: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
 
     				// we need to send steering angle and velocity to the forklift.
     				// we also need to make this controller go backwards.
@@ -301,7 +301,7 @@ public:
                         steer_msg.data = steering_angle;
 
                         // DEBUG:
-                        cout << "Forward is publishing\n";
+                        cout << "Forward velocity pub\n";
 
                         lin_vel_pub.publish(velocity_msg);
                         steer_angle_pub.publish(steer_msg);
