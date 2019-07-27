@@ -220,7 +220,9 @@ public:
     				linear_velocity = velocity_constraint*maximum_linear_velocity;
 
     				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
-    				heading_error = goal_heading - wrapToPi(pose.heading + M_PI); // because the forklift is driving in reverse, the heading must be flipped 180 degrees
+					//heading_error = goal_heading - wrapToPi(pose.heading + M_PI); // because the forklift is driving in reverse, the heading must be flipped 180 degrees
+
+					heading_error = lookAheadError(wrapToPi(pose.heading + M_PI), lookahead_segments);
 
     				// computing smallest angle
     				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
@@ -296,9 +298,6 @@ public:
                         velocity_msg.data = -linear_velocity;
                         steer_msg.data = steering_angle;
 
-                        // DEBUG:
-                        cout << "Reverse velocity pub\n";
-
                         lin_vel_pub.publish(velocity_msg);
                         steer_angle_pub.publish(steer_msg);
                     }
@@ -358,6 +357,23 @@ public:
 			lookahead_heading_deviation = lookahead_heading_deviation + abs(diff_angle);
 		}
 		return lookahead_heading_deviation;
+	}
+
+	double lookAheadError(double present_heading, int lookahead_segments)
+	{
+		// Calculated the weighted error from considering the future steering angle
+		double lookaheaderror = 0.0;
+		double weight_sum = 0.0;
+		for (int i = 1; i < lookahead_segments; ++i) {
+			double heading = atan2(local_path[segment+i][1] - local_path[segment+(i-1)][1], local_path[segment+i][0] - local_path[segment+(i-1)][0]);
+			double error = heading - present_heading;
+			lookaheaderror += error/i;
+			weight_sum += (1.0/i);
+		}
+		
+		lookaheaderror /= weight_sum;
+
+		return lookaheaderror;
 	}
 
 	void update_path(nav_msgs::Path path)
@@ -463,7 +479,7 @@ public:
 		nh_.param("goal_tolerance", goal_tol, 0.3);
 		nh_.param("steering_gain",steering_gain, 1.0);
 	    nh_.param("error_gain",error_gain,1.0);
-	    nh_.param("cte_gain", cte_gain, 1.0);
+	    nh_.param("cte_gain", cte_gain, 0.01);
 		nh_.param("heading_gain", heading_gain, 1.0);
 		nh_.param("derivative_cte_gain",derivative_cte_gain, 1.0);
 		nh_.param("derivative_heading_gain", derivative_heading_gain, 1.0);
