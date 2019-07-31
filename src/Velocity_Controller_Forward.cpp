@@ -139,6 +139,7 @@ public:
                     std_msgs::Float64 velocity_msg;
                     velocity_msg.data = 0.0;
                     lin_vel_pub.publish(velocity_msg);
+                    ros::param::set("/goal_bool", true);
                     ROS_INFO("DONE!");
                 }
             }
@@ -171,9 +172,9 @@ public:
 			if(along_track_error > goal_tol) {
 				ros::param::set("/goal_bool",false);
 			}
-			else {
-				ros::param::set("/goal_bool",true);
-			}
+			// else {
+			// 	ros::param::set("/goal_bool",true);
+			// }
 
             // // DEBUG: check this loop
             // printf("along_track: %0.04f, goal_tol: %0.03f\n", along_track_error, goal_tol);
@@ -188,9 +189,9 @@ public:
                     // printf("Segment %d of %d, error: %0.4g\n", segment, num_segments, along_track_error);
 
                     // // DEBUG:
-                    // cout << "*****************************************************" << endl;
+                    // cout << "**************************************" << endl;
                     // std::cout << "3) Entered velocity command loop" << std::endl;
-                    // cout << "*****************************************************" << endl;
+                    // cout << "**************************************" << endl;
 
     				nh_.param("/control_panel_node/control_estop", control_estop,false);
     				while(manual_deadman_on || control_estop || proximity_stop) {
@@ -212,21 +213,17 @@ public:
 
     				velocity_constraint = max(velocity_constraint,0.3);
 
-                    //==============================================================
+                    //==========================================================
                     // Set Velocity Input
-                    //==============================================================
+                    //=============+============================================
     				linear_velocity = velocity_constraint*maximum_linear_velocity;
 
-    				// Slowing down if approaching last goal
-    				if (segment == local_path.size()-1) {
-    					double segment_length = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1]- local_path[segment][1]),2));
-    					double approaching_velocity = (abs(along_track_error)/segment_length)*linear_velocity;
-    					linear_velocity = min(linear_velocity, approaching_velocity);
-    				}
-
     				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
-    				heading_error = goal_heading - pose.heading;
-    				// computing smallest angle
+    				//heading_error = goal_heading - pose.heading;
+
+                    heading_error = lookAheadError(pose.heading, lookahead_segments);
+
+                    // computing smallest angle
     				if (heading_error > M_PI) {heading_error = heading_error-(M_PI*2);}
     				if (heading_error < -M_PI) {heading_error=heading_error+(M_PI*2);}
 
@@ -246,9 +243,9 @@ public:
     					previous_heading_error = heading_error;
     				}
 
-                    //==============================================================
+                    //==========================================================
                     // Set Steering Input
-                    //==============================================================
+                    //==========================================================
                     // NOTE: because the forklift is rear-steering when going in the forward direction, a negative steering angle results in a left-hand turn which is a positive angular velocity. This controller was designed for a front-steering system, so the steering angle must be negated.
 
                     // // DEBUG: Check controller terms
@@ -259,7 +256,7 @@ public:
                     // cout << "Cross-track derivative: " << derivative_cross_track_error << "\n";
                     // cout << "Heading derivative: " << derivative_heading_error << "\n";
 
-                    steering_angle = -(heading_gain*heading_error + error_gain*atan2(cte_gain*cross_track_error,linear_velocity) + derivative_cross_track_error + derivative_heading_error);
+                    steering_angle = -(heading_gain*heading_error + cte_gain*cross_track_error + derivative_cross_track_error + derivative_heading_error);
 
                     // Bound the steering angle
                     steering_angle = max(steering_angle, steering_angle_min);
@@ -270,8 +267,18 @@ public:
     				if (angular_velocity > maximum_angular_velocity) {angular_velocity = maximum_angular_velocity;}
     				if (angular_velocity < -maximum_angular_velocity) {angular_velocity = -maximum_angular_velocity;}
 
+                    // Reset the velocity to decrease based on the steering angle setpoint
+                    linear_velocity = cos(steering_angle)*maximum_linear_velocity;
+
+                    // Slowing down if approaching last goal
+    				if (segment == local_path.size()-1) {
+    					double segment_length = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1]- local_path[segment][1]),2));
+    					double approaching_velocity = (abs(along_track_error)/segment_length)*linear_velocity;
+    					linear_velocity = min(linear_velocity, approaching_velocity);
+    				}
+
                     // DEBUG:
-                    printf("[forward] heading: %0.04f, target: %0.04f, error: %0.04f, steer: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
+                    // printf("[forward] heading: %0.04f, target: %0.04f, error: %0.04f, steer: %0.04f, vel: %0.04f\n", pose.heading, goal_heading, heading_error, steering_angle, linear_velocity);
 
     				// we need to send steering angle and velocity to the forklift.
     				// we also need to make this controller go backwards.
@@ -299,9 +306,6 @@ public:
                         std_msgs::Float64 steer_msg;
                         velocity_msg.data = linear_velocity;
                         steer_msg.data = steering_angle;
-
-                        // DEBUG:
-                        cout << "Forward velocity pub\n";
 
                         lin_vel_pub.publish(velocity_msg);
                         steer_angle_pub.publish(steer_msg);
@@ -364,6 +368,23 @@ public:
 		return lookahead_heading_deviation;
 	}
 
+    double lookAheadError(double present_heading, int lookahead_segments)
+	{
+		// Calculated the weighted error from considering the future steering angle
+		double lookaheaderror = 0.0;
+		double weight_sum = 0.0;
+		for (int i = 1; i < lookahead_segments; ++i) {
+			double heading = atan2(local_path[segment+i][1] - local_path[segment+(i-1)][1], local_path[segment+i][0] - local_path[segment+(i-1)][0]);
+			double error = heading - present_heading;
+			lookaheaderror += error/i;
+			weight_sum += (1.0/i);
+		}
+
+		lookaheaderror /= weight_sum;
+
+		return lookaheaderror;
+	}
+
 	void update_path(nav_msgs::Path path)
     {
 
@@ -407,24 +428,11 @@ public:
     {
 		double L1, L2, L3;
 	 	double theta, along_track_error;
-		 L1 = sqrt(pow((pose.x - local_path[segment+1][0]),2) + pow((pose.y - local_path[segment+1][1]),2));
-		 L2 = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1] - local_path[segment][1]),2));
-		 L3 = sqrt(pow((pose.x - local_path[segment][0]),2) + pow((pose.y - local_path[segment][1]),2));
-
-         // // DEBUG: check calculations
-         // cout << "Goal tol: " << goal_tol << "\n";
-         // cout << "Pose: (" << pose.x << "," << pose.y << ", " << pose.heading << ")\n";
-         // cout << "Segment " << segment << ": (" << local_path[segment][0] << "," << local_path[segment][1] << ")\n";
-         // cout << "Segment " << segment+1 << ": (" << local_path[segment+1][0] << "," << local_path[segment+1][1] << ")\n";
-         // cout << "L1: " << L1 << "\n";
-         // cout << "L2: " << L2 << "\n";
-         // cout << "L3: " << L3 << "\n";
-
-		 // theta = acos(-(L3*L3 - L1*L1 - L2*L2)/(2*L1*L2));
-         //
-         // cout << "Theta: " << theta << "\n";
-         //
-		 // along_track_error = L1*cos(theta);
+        L1 = sqrt(pow((pose.x - local_path[segment+1][0]),2) + pow((pose.y - local_path[segment+1][1]),2));
+        L2 = sqrt(pow((local_path[segment+1][0] - local_path[segment][0]),2) + pow((local_path[segment+1][1] - local_path[segment][1]),2));
+        L3 = sqrt(pow((pose.x - local_path[segment][0]),2) + pow((pose.y - local_path[segment][1]),2));
+        // theta = acos(-(L3*L3 - L1*L1 - L2*L2)/(2*L1*L2));
+        // along_track_error = L1*cos(theta);
 
          along_track_error = -(L3*L3 - L1*L1 - L2*L2)/(2*L2);
 		 return along_track_error;
