@@ -18,6 +18,20 @@
 #include <map_msgs/OccupancyGridUpdate.h>
 
 
+// NEED TO FIX MAP TO ALLOW PLACING ORIGIN AT ANY LOCATION AND TO HAVE A NON-SQUARE MAP
+//
+// Convert from Map location to Grid location
+// column = (map_x - origin_x)/resolution
+// row = (map_y - origin_y)/resolution
+//
+// Convert from Grid location to Map location
+// map_x = (column*resolution) + resolution/2 + origin_x
+// map_y = (row*resolution) + resolution/2 + origin_y
+//
+// Need to change lines that consider bounds
+//
+// Lines to change: 203, 206, 212, 275, 287, 318, 319, 320, 321, 386-389, 392, 403, 421-423, 452, 454, 458, 467, 471, 493
+
 using namespace std; // avoid using "using namespace" in future programs
 
 pathplan::pathplan()
