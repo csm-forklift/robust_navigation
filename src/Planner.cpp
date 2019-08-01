@@ -456,7 +456,7 @@ void pathplan::expand(vector<int> &step, const nav_msgs::OccupancyGrid test_map_
                 float pose_change_error = abs(n*M_PI/180-pose.heading);
 		            float unexplored_cost=0;
 		            if (test_map_.data[(x + width/2) + width*(y+height/2)] == -1){
-			      		   unexplored_cost = 30.0;
+			      		   unexplored_cost = 1.0;
 		       	    }
 			          else{
 				           unexplored_cost = 0.0;

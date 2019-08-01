@@ -222,8 +222,9 @@ public:
     				linear_velocity = velocity_constraint*maximum_linear_velocity;
 
     				goal_heading = atan2(end_point.y - start_point.y, end_point.x - start_point.x);
-					//heading_error = goal_heading - wrapToPi(pose.heading + M_PI); // because the forklift is driving in reverse, the heading must be flipped 180 degrees
+					//heading_error = goal_heading - wrapToPi(pose.heading + M_PI);
 
+                    // because the forklift is driving in reverse, the heading must be flipped 180 degrees
 					heading_error = lookAheadError(wrapToPi(pose.heading + M_PI), lookahead_segments);
 
     				// computing smallest angle
