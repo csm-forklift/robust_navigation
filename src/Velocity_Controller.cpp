@@ -43,6 +43,7 @@ private:
     ros::Publisher steer_angle_pub;
 	ros::Duration delta_time;
     tf::TransformListener listener;
+    ros::Rate rate; // used for the inner while loop to slow it down when the current operating mode is not set to run this loop
 
     // Bounds
     geometry_msgs::Point start_point,end_point; // local segment points
@@ -83,7 +84,7 @@ private:
 	dynamic_reconfigure::Server<robust_navigation::GainsConfig>::CallbackType f;
 
 public:
-	VelocityController() : nh_("~"), f(boost::bind(&VelocityController::parameter_callback, this, _1, _2))
+	VelocityController() : nh_("~"), f(boost::bind(&VelocityController::parameter_callback, this, _1, _2)), rate(30)
     {
 		server.setCallback(f);
 		get_params();
@@ -340,6 +341,9 @@ public:
     	      		plan.clear();
                 }
 
+                // Slow down the loop if the 'if' condition is being skipped because the current control mode turns this 'off'
+                rate.sleep();
+
 				along_track_error = compute_along_track_error();
 			}
 
@@ -585,8 +589,8 @@ public:
 
 int main(int argc, char **argv){
 
-	ROS_INFO("initializing velocity_controller_reverse");
-	ros::init(argc, argv, "velocity_controller_reverse");
+	ROS_INFO("initializing velocity_controller");
+	ros::init(argc, argv, "velocity_controller");
 
 	VelocityController VC;
 

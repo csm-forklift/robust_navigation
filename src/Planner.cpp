@@ -56,9 +56,13 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
 	//initialize nav_msgs::Path
     path = node_.advertise<nav_msgs::Path>("/path",1,true);
 
+    // DEBUG: publish test maps
+    /*
     path_cost_ = node_.advertise<nav_msgs::OccupancyGrid>("path_cost_map_",1,true);
     dilated_map = node_.advertise<nav_msgs::OccupancyGrid>("test_map_dilated_",10,true);
     movement_map_pub = node_.advertise<nav_msgs::OccupancyGrid>("movement_map",1,true);
+    */
+
     //initialize Astar nav_msg path
     Astar_path_ = new nav_msgs::Path;
     //int *seq = new seq(0);
@@ -84,24 +88,15 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
     int height = test_map_.info.height;
     float resolution = test_map_.info.resolution;
 
+    // DEBUG: test maps
+    /*
     path_cost_map_.header.stamp = ros::Time::now();
     path_cost_map_.header.seq = 1;
     path_cost_map_.header.frame_id = "/odom";
     path_cost_map_.info.width = width;
     path_cost_map_.info.height = height;
     path_cost_map_.info.resolution=resolution;
-    path_cost_map_.info.origin.position.x = test_map_.info.origin.position.x;
-    path_cost_map_.info.origin.position.y = test_map_.info.origin.position.y;
-
-    test_map_dilated_.header.stamp = ros::Time::now();
-    test_map_dilated_.header.seq = 1;
-    test_map_dilated_.header.frame_id = "/odom";
-    test_map_dilated_.info.width = width;
-    test_map_dilated_.info.height = height;
-    test_map_dilated_.info.resolution=resolution;
-    test_map_dilated_.info.origin.position.x = test_map_.info.origin.position.x;
-    test_map_dilated_.info.origin.position.y = test_map_.info.origin.position.y;
-    test_map_dilated_.data = test_map_.data;
+    path_cost_map_.info.origin = test_map_.info.origin;
 
     movement_map_.header.stamp = ros::Time::now();
     movement_map_.header.seq = 1;
@@ -109,9 +104,18 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
     movement_map_.info.width = width;
     movement_map_.info.height = height;
     movement_map_.info.resolution=resolution;
-    movement_map_.info.origin.position.x = test_map_.info.origin.position.x;
-    movement_map_.info.origin.position.y = test_map_.info.origin.position.y;
+    movement_map_.info.origin = test_map_.info.origin;
     movement_map_.data = test_map_.data;
+    */
+
+    test_map_dilated_.header.stamp = ros::Time::now();
+    test_map_dilated_.header.seq = 1;
+    test_map_dilated_.header.frame_id = "/odom";
+    test_map_dilated_.info.width = width;
+    test_map_dilated_.info.height = height;
+    test_map_dilated_.info.resolution=resolution;
+    test_map_dilated_.info.origin = test_map_.info.origin;
+    test_map_dilated_.data = test_map_.data;
 
     //initialize hueristic_cost, movement, movement_cost, possible_paths, openset and closet used to calculate A* Path
 
@@ -313,6 +317,8 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
     }
 
     Astar_path_->poses.resize(optimal_path.size());
+
+    /*
     path_cost_map_.data.resize(test_map_.data.size());
 
     // DEBUG: This creates a cost map for visual debugging in rviz
@@ -323,7 +329,9 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
           float h_cost = hueristic_cost_.at(x+width/2).at(y+height/2);
           path_cost_map_.data[i]=(m_cost);
     }
+    */
 
+    /*
     // DEBUG: This creates a map representing the possible movements for generating the optimal path
     int num_columns = movement.at(0).size();
     for (int row = 0; row < movement.size(); ++row) {
@@ -331,6 +339,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
             movement_map_.data.at(row*num_columns + col) = movement.at(col).at(row);
         }
     }
+    */
 
     for(int i=optimal_path.size()-1;i>=0;i--){
         //(*Astar_path_).poses[optimal_path.size()-1-i].header.seq=i;
@@ -351,9 +360,9 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
     //----- Post-Processing -----//
 
     path.publish(*Astar_path_);
-    path_cost_.publish(path_cost_map_);
-    dilated_map.publish(test_map_dilated_);
-    movement_map_pub.publish(movement_map_);
+    //path_cost_.publish(path_cost_map_);
+    //dilated_map.publish(test_map_dilated_);
+    //movement_map_pub.publish(movement_map_);
 
     optimal_path.clear();
     movement_cost.clear();
@@ -376,8 +385,8 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
 
     int width = test_map_.info.width;
     int height = test_map_.info.height;
-    float map_origin_x = test_map_.info.origin.position.x;
-    float map_origin_y = test_map_.info.origin.position.y;
+    //float map_origin_x = test_map_.info.origin.position.x;
+    //float map_origin_y = test_map_.info.origin.position.y;
     float resolution = test_map_.info.resolution;
 
     float best_hueristic_cost_ = 100000000;//sqrt(pow(map_origin_x-goal_.x,2) + pow(map_origin_y-goal_.y,2));
@@ -394,6 +403,8 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
         hueristic_cost_.at(i%height).at(int(i/width)) = cost; // euclidean + occupied cost
         // ROS_INFO("x=%d,y=%d,cost=%f",x,y,cost);
 
+
+        /*
         float radius_cost = (1/resolution); //dilate cost around the obstacle
         float radius_obstacle = (0.2/resolution); // dilate obstacle
         if (test_map_.data[i]==100){ //dilate cost
@@ -412,13 +423,13 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
                         movement_cost.at(x_1+width/2).at(y_1+height/2)=5*(radius_cost-j); //diminishing cost
                         // movement_cost.at(x_1+width/2).at(y_1+height/2)=0;
 
-                        */
+
 
                         movement_cost.at(x_1+width/2).at(y_1+height/2)=0;
                     }
                 }
             }
-        }
+        }*/
 
         if (cost < best_hueristic_cost_ && test_map_dilated_.data[i] != 100  &&  x > -width/2 && x<width/2 && y > -height/2 && y<height/2){
             int_goal_.x = x*resolution + origin_x;
@@ -533,7 +544,7 @@ bool pathplan::acquire_robotpose()
     double yaw;
 
     try {
-        listener.waitForTransform("/odom", "/base_link", ros::Time(0), ros::Duration(2.0));
+        listener.waitForTransform("/odom", "/base_link", ros::Time(0), ros::Duration(0.5));
         listener.lookupTransform("/odom", "/base_link", ros::Time(0), odom_base_transform);
     }
     catch(tf::TransformException &ex) {
