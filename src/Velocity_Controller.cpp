@@ -286,7 +286,7 @@ public:
                     }
 
                     // DEBUG:
-                    //printf("[%s] heading: %0.04f, h: %0.04f, cte: %0.04f, der_cte: %0.04f, der_h: %0.04f, steer: %0.04f, vel: %0.04f\n", ros::this_node::getName(), forklift_heading, heading_gain*heading_error, cte_gain*cross_track_error, derivative_cross_track_error, derivative_heading_error, steering_angle, linear_velocity);
+                    //printf("[%s] heading: %0.04f, h: %0.04f, cte: %0.04f, der_cte: %0.04f, der_h: %0.04f, steer: %0.04f, vel: %0.04f\n", ros::this_node::getName().c_str(), forklift_heading, heading_gain*heading_error, cte_gain*cross_track_error, derivative_cross_track_error, derivative_heading_error, steering_angle, linear_velocity);
 
                     //==========================================================
                     // Publish Commands
@@ -379,6 +379,13 @@ public:
 			lookaheaderror += error/i;
 			weight_sum += (1.0/i);
 		}
+
+        if (lookahead_segments == 1) {
+            double heading = atan2(local_path[segment+1][1] - local_path[segment][1], local_path[segment+1][0] - local_path[segment][0]);
+            double error = heading - present_heading;
+            lookaheaderror = error;
+            weight_sum = 1.0;
+        }
 
 		lookaheaderror /= weight_sum;
 
