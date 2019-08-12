@@ -286,7 +286,7 @@ public:
                     }
 
                     // DEBUG:
-                    //printf("[%s] heading: %0.04f, h: %0.04f, cte: %0.04f, der_cte: %0.04f, der_h: %0.04f, steer: %0.04f, vel: %0.04f\n", ros::this_node::getName().c_str(), forklift_heading, heading_gain*heading_error, cte_gain*cross_track_error, derivative_cross_track_error, derivative_heading_error, steering_angle, linear_velocity);
+                    printf("[%s] heading: %0.04f, h: %0.04f, cte: %0.04f, der_cte: %0.04f, der_h: %0.04f, steer: %0.04f, vel: %0.04f\n", ros::this_node::getName().c_str(), forklift_heading, heading_gain*heading_error, cte_gain*cross_track_error, derivative_cross_track_error, derivative_heading_error, steering_angle, linear_velocity);
 
                     //==========================================================
                     // Publish Commands

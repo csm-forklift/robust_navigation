@@ -535,6 +535,15 @@ void pathplan::poss_path()
     }
 }
 
+double pathplan::wrapToPi(double angle)
+{
+    angle = fmod(angle + M_PI, 2*M_PI);
+    if (angle < 0) {
+        angle += 2*M_PI;
+    }
+    return (angle - M_PI);
+}
+
 bool pathplan::acquire_robotpose()
 {
     tf::StampedTransform odom_base_transform;
@@ -544,8 +553,8 @@ bool pathplan::acquire_robotpose()
     double yaw;
 
     try {
-        listener.waitForTransform("/odom", "/base_link", ros::Time(0), ros::Duration(0.5));
-        listener.lookupTransform("/odom", "/base_link", ros::Time(0), odom_base_transform);
+        listener.waitForTransform("/odom", "/sensor_link", ros::Time(0), ros::Duration(0.5));
+        listener.lookupTransform("/odom", "/sensor_link", ros::Time(0), odom_base_transform);
     }
     catch(tf::TransformException &ex) {
         ROS_ERROR("%s",ex.what());
@@ -557,11 +566,13 @@ bool pathplan::acquire_robotpose()
 
     pose.x = odom_base_transform.getOrigin().getX();
     pose.y = odom_base_transform.getOrigin().getY();
+    // Flip the yaw angle by 180 degrees because we are driving backwards
+    //pose.heading = wrapToPi(yaw + M_PI);
+
     pose.heading = yaw;
 
     return true;
 }
-
 
 
 

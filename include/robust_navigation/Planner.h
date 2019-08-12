@@ -32,6 +32,8 @@ class pathplan
 		void intermediate_goal();
 
 		float diagonalcost(int &x,int &y, int &angle, const nav_msgs::OccupancyGrid test_map_);
+        
+        double wrapToPi(double angle);
 
 		bool acquire_robotpose();
 
