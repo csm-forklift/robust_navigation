@@ -404,8 +404,8 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
         // ROS_INFO("x=%d,y=%d,cost=%f",x,y,cost);
 
 
-        /*
-        float radius_cost = (1/resolution); //dilate cost around the obstacle
+        
+        float radius_cost = (2/resolution); //dilate cost around the obstacle
         float radius_obstacle = (0.2/resolution); // dilate obstacle
         if (test_map_.data[i]==100){ //dilate cost
             for(int j=0;j<int(radius_cost);j++){
@@ -418,18 +418,14 @@ void pathplan::hueristic_cost(const nav_msgs::OccupancyGrid test_map_)
                         // if(j<radius_obstacle){
                         //     test_map_dilated_.data[(x_1 + width/2) + width*(y_1+height/2)]=100;
                         // }
-                        /*
-                        THIS SECTION WAS CHANGED ON JANUARY 14th for the demo to work we commented out the following line and instead set it to 0
+                        
+                        // THIS SECTION WAS CHANGED ON JANUARY 14th for the demo to work we commented out the following line and instead set it to 0
                         movement_cost.at(x_1+width/2).at(y_1+height/2)=5*(radius_cost-j); //diminishing cost
                         // movement_cost.at(x_1+width/2).at(y_1+height/2)=0;
-
-
-
-                        movement_cost.at(x_1+width/2).at(y_1+height/2)=0;
                     }
                 }
             }
-        }*/
+        }
 
         if (cost < best_hueristic_cost_ && test_map_dilated_.data[i] != 100  &&  x > -width/2 && x<width/2 && y > -height/2 && y<height/2){
             int_goal_.x = x*resolution + origin_x;
@@ -553,6 +549,7 @@ bool pathplan::acquire_robotpose()
     double yaw;
 
     try {
+        // NOTE: currently set to 'sensor_link' so that the path follows the rear of the forklift as it drives backwards. this helps to keep from having steering troubles with using the front as base_link and then steering from the back.
         listener.waitForTransform("/odom", "/sensor_link", ros::Time(0), ros::Duration(0.5));
         listener.lookupTransform("/odom", "/sensor_link", ros::Time(0), odom_base_transform);
     }
