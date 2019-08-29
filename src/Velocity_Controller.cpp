@@ -6,7 +6,7 @@
 #include <math.h>
 #include <iostream>
 #include <algorithm>
-#include <cmath> // for M_PI
+#include <cmath> // for M_PI, M_PI_2
 #include <sys/time.h>
 #include <tf/tf.h>
 #include <tf/transform_listener.h>
@@ -35,6 +35,7 @@ private:
     ros::Subscriber controller_path_sub;
 	ros::Subscriber joystickoverideSubscriber_; // subscribes to deadman switch on joystick
     ros::Subscriber gear_sub; // reads in the desired gear: forward, neutral, reverse
+    ros::Subscriber current_angle_sub; // reads the current steering angle, used to compared against desired setpoint
     ros::Subscriber control_mode_sub; // reads the current control mode set by the master controller
 	ros::Publisher cmd_vel_pub; // cmd vel to send to vehicle
 	ros::Publisher local_path_pub; // publishing the current segment we are looking at
@@ -52,6 +53,7 @@ private:
 
     // State variables
     double steering_angle, steering_angle_min, steering_angle_max;
+    double current_angle, current_angle_error_max;
 	double angular_velocity, linear_velocity;
     int autonomous_deadman_button, manual_deadman_button;
 	bool autonomous_deadman_on, manual_deadman_on, control_estop, proximity_stop; // deadman switch
@@ -91,14 +93,16 @@ public:
 		//cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base/commands/velocity",20); / use with actual turtlebot
         cmd_vel_pub = nh_.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop",20); // use with gazebo turtlebot
 		local_path_pub = nh_.advertise<nav_msgs::Path>("/local_path",20);
+
+        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/velocity_node/velocity_setpoint", 1);
+        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/steering_node/angle_setpoint", 1);
+
         // FIXME: This is a hacker way of trying to get the path_tracking_controller to run while still providing a callback to update the path that can be called simultaneously with running the controller
 		update_path_sub = nh_.subscribe("/path",1, &VelocityController::update_path,this);
         controller_path_sub = nh_.subscribe("/path",1, &VelocityController::controller_loop,this);
         gear_sub = nh_.subscribe("/velocity_node/gear", 1, &VelocityController::gearCallback, this);
+        current_angle_sub = nh_.subscribe("/steering_node/filtered_angle", 1, &VelocityController::angleCallback, this);
         control_mode_sub = nh_.subscribe("/control_mode", 1, &VelocityController::controlModeCallback, this);
-        lin_vel_pub = nh_.advertise<std_msgs::Float64>("/velocity_node/velocity_setpoint", 1);
-        steer_angle_pub = nh_.advertise<std_msgs::Float64>("/steering_node/angle_setpoint", 1);
-
 		joystickoverideSubscriber_ = nh_.subscribe("/joy",1, &VelocityController::joy_override,this);
 		autonomous_deadman_on = false;
         manual_deadman_on = false;
@@ -284,6 +288,14 @@ public:
                         // if going in the reverse direction, negate the velocity
                         linear_velocity = -linear_velocity;
                     }
+
+                    // Update the linear velocity to slow down if the current steering angle is far off from the desired setpoint
+                    double current_angle_error = fabs(steering_angle - current_angle);
+                    current_angle_error = min(current_angle_error, current_angle_error_max);
+                    // Scale the angle error to a range of [0,pi/2]
+                    current_angle_error *= (M_PI_2/current_angle_error_max);
+                    // Scale the linear velocity by cos() of the error
+                    linear_velocity *= cos(current_angle_error);
 
                     // DEBUG:
                     printf("[%s] heading: %0.04f, h: %0.04f, cte: %0.04f, der_cte: %0.04f, der_h: %0.04f, steer: %0.04f, vel: %0.04f\n", ros::this_node::getName().c_str(), forklift_heading, heading_gain*heading_error, cte_gain*cross_track_error, derivative_cross_track_error, derivative_heading_error, steering_angle, linear_velocity);
@@ -509,6 +521,7 @@ public:
         nh_.param("timeout", timeout, 1.0);
         nh_.param("/forklift/steering/min_angle", steering_angle_min, -75*(M_PI/180.0));
         nh_.param("/forklift/steering/max_angle", steering_angle_max, 75*(M_PI/180.0));
+        nh_.param("angle_error_max", current_angle_error_max, 75*(M_PI/180.0));
 	}
 
 	void parameter_callback(robust_navigation::GainsConfig &config, uint32_t level)
@@ -556,6 +569,11 @@ public:
         if (gear != 1 and gear != -1) {
             gear = 0;
         }
+    }
+
+    void angleCallback(const std_msgs::Float64 msg)
+    {
+        current_angle = msg.data;
     }
 
     void controlModeCallback(const std_msgs::Int8 msg)
