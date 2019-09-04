@@ -138,8 +138,8 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
     origin.push_back((int)((pose.y - origin_y)/resolution));
     openset->push_back(origin); //add the origin
 
-    // ROS_INFO("Robot Position: x=%f, y=%f",pose.x,pose.y); // Origin corresponds to odometry position of the robot
-    // ROS_INFO("Robot grid position: x=%d, y=%d", origin[0], origin[1]);
+    ROS_INFO("Robot Position: x=%f, y=%f",pose.x,pose.y); // Origin corresponds to odometry position of the robot
+    ROS_INFO("Robot grid position: x=%d, y=%d", origin[0], origin[1]);
 
     bool goal_reached=0;
     int temp_iterator_;
@@ -157,7 +157,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
         // cout << "goal: " << goal_reached << endl;
 
         if (openset->size()==0 && goal_reached==0){
-            // ROS_INFO("NO PATH TO FINAL OR INTERMEDIATE GOAL!");
+            ROS_INFO("NO PATH TO FINAL OR INTERMEDIATE GOAL!");
             //ros::param::set("/control_panel_node/control_estop",true);
             optimal_path.clear();
             movement_cost.clear();
@@ -173,13 +173,14 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
         for(int i=0;i<openset->size();i++){
             x_1_=(*openset)[i][0];
             y_1_=(*openset)[i][1];
-            // ROS_INFO("EXPLORING %d IN THE OPENSET AT POINT (%d, %d)", i, x_1_, y_1_);
+            // ROS_INFO("EXPLORING %d of %ld IN THE OPENSET AT POINT (%d, %d)", i,openset->size()-1,x_1_, y_1_);
             // ROS_INFO("Comparing against intermediate goal: (%f, %f)", int_goal_.x, int_goal_.y);
 
             // FIXME: need to assign goal tolerances as parameters rather than hardcoded numbers
             double x_1_world = x_1_*resolution + origin_x;
             double y_1_world = y_1_*resolution + origin_y;
-            if (abs(x_1_world - int_goal_.x) < resolution/2 && abs(y_1_world - int_goal_.y) < resolution/2){ //checking if we have reached intermediate goal point
+            // ROS_INFO("World position (%f, %f), Goal: (%f, %f)", x_1_world, y_1_world, int_goal_.x, int_goal_.y);
+            if (abs(x_1_world - int_goal_.x) <= resolution/2 && abs(y_1_world - int_goal_.y) <= resolution/2){ //checking if we have reached intermediate goal point
 
                 ROS_INFO("(x, y) world: (%f, %f)", x_1_world, y_1_world);
 
@@ -207,7 +208,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
                 break;
             }
             total_cost_=movement_cost.at(x_1_+width/2).at(y_1_+height/2)+hueristic_cost_.at(x_1_+width/2).at(y_1_+height/2);//movement+grid cost
-            ROS_INFO("Total_cost=%f, x=%d, y=%d",total_cost_,x_1_,y_1_);
+            // ROS_INFO("Openset Size: %ld, Temp Iterator: %d, Total_cost=%f, x=%d, y=%d",openset->size(),temp_iterator_,total_cost_,x_1_,y_1_);
 
             if ( (total_cost_ == temp_cost_ && hueristic_cost_.at(x_1_+width/2).at(y_1_+height/2) <= Best_hueristic_cost_) || (total_cost_<temp_cost_ && goal_reached==0)) {
                 if(temp_step.size()>=1){
@@ -220,7 +221,7 @@ void pathplan::Astar(const nav_msgs::OccupancyGrid test_map_)
                 pushback.push_back(x_1_);
                 pushback.push_back(y_1_);
                 temp_step.push_back(pushback);
-                // ROS_INFO("ENTERD");
+                // ROS_INFO("ENTERED");
             }
         }
         //ROS_INFO("SELECTED: Total_cost=%f, x=%d, y=%d",total_cost_,temp_step[0][0],temp_step[0][1]);
