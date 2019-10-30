@@ -141,12 +141,8 @@ include_directories(
 ## Declare a C++ executable
 add_executable(elevation_map_node src/Elevation_Map.cpp)
 add_executable(planner_node src/Planner.cpp)
-#add_executable(path_controller_node src/Velocity_Controller.cpp)
 add_executable(smoother_node src/smoother.cpp)
-#add_dependencies(path_controller_node ${PROJECT_NAME}_gencfg)
 add_executable(velocity_controller src/Velocity_Controller.cpp)
-add_executable(velocity_controller_reverse src/Velocity_Controller_Reverse.cpp)
-add_executable(velocity_controller_forward src/Velocity_Controller_Forward.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(robust_navigation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -155,11 +151,7 @@ add_executable(velocity_controller_forward src/Velocity_Controller_Forward.cpp)
 target_link_libraries(elevation_map_node ${catkin_LIBRARIES})
 target_link_libraries(planner_node ${catkin_LIBRARIES})
 target_link_libraries(smoother_node ${catkin_LIBRARIES})
-#target_link_libraries(path_controller_node ${catkin_LIBRARIES})
-#add_dependencies(path_controller_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(velocity_controller ${catkin_LIBRARIES})
-target_link_libraries(velocity_controller_reverse ${catkin_LIBRARIES})
-target_link_libraries(velocity_controller_forward ${catkin_LIBRARIES})
 #############
 ## Install ##
 #############
